@@ -140,6 +140,20 @@ describe("SidebarController", () => {
     expect(hasQueryResult).toBe(true);
   });
 
+  it("uses ui correlationId as rpc command id", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "get_available_models",
+      correlationId: "ui-correlation-1",
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "get_available_models",
+      id: "ui-correlation-1",
+    });
+  });
+
   it("forwards rpc stderr events as visible errors", async () => {
     const harness = createHarness();
 

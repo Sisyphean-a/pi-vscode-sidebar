@@ -2,6 +2,12 @@
 
 Pi VSCode Sidebar is a VS Code extension that runs Pi in RPC mode and uses a sidebar webview as the primary interaction surface.
 
+## Stable Release
+
+- 当前稳定版本：`0.0.1`
+- GA 签署：`docs/quality-gates/ga-signoff-2026-05-24.md`
+- Perfect 门禁：`docs/quality-gates/perfection-gates.md`
+
 ## Requirements
 
 - Node.js `>=22.19.0`
@@ -36,10 +42,22 @@ The extension contributes these settings:
 ```bash
 pnpm install
 pnpm test
+pnpm run test:e2e
+pnpm run test:perf
 pnpm typecheck
 pnpm lint
 pnpm build
 ```
+
+## 发布前检查
+
+- 门禁清单：`docs/quality-gates/perfection-gates.md`
+- 进度追踪：`docs/quality-gates/progress-tracker.md`
+- 最终发布前必须通过：
+  - `pnpm verify`
+  - `pnpm run test:e2e`
+  - `pnpm run test:perf`
+  - `pnpm run package:vsix`
 
 ## Project layout
 

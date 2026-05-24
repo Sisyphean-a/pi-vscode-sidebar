@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { createBridge } from "./bridge/extension-bridge.ts";
 import { createSidebarController } from "./host/controller.ts";
+import { createLogger, normalizeLogLevel, type Logger } from "./host/logger.ts";
 import { createPiRpcProcessManager } from "./host/process-manager.ts";
 import { createRpcClient } from "./host/rpc-client.ts";
 import { createRpcSessionStateStore } from "./host/state-store.ts";
@@ -10,7 +11,7 @@ import { createSidebarViewProvider } from "./view/provider.ts";
 
 export async function activate(context: vscode.ExtensionContext) {
   const processManager = createPiRpcProcessManager();
-  setupTraceLogging(context, processManager);
+  const logger = setupTraceLogging(context, processManager);
   const tracker = createSessionTracker(context);
   await tracker.pruneMissingSessions();
   const restoreState = createRestoreState(tracker);
@@ -32,6 +33,7 @@ export async function activate(context: vscode.ExtensionContext) {
     rpcClient,
     stateStore: createRpcSessionStateStore(),
     ensureStarted,
+    logger,
     onRpcState: async (state) => {
       if (!state.sessionId || !state.sessionFile) return;
       restoreState.pendingSession = state.sessionFile;
@@ -64,23 +66,50 @@ export async function deactivate() {}
 function setupTraceLogging(
   context: vscode.ExtensionContext,
   processManager: ReturnType<typeof createPiRpcProcessManager>,
-): void {
+): Logger {
   const output = vscode.window.createOutputChannel("Pi Sidebar");
   context.subscriptions.push(output);
+  const logLevel = normalizeLogLevel(
+    vscode.workspace.getConfiguration("piSidebar").get<string>("logLevel"),
+  );
+  const logger = createLogger({
+    level: logLevel,
+    write(line) {
+      output.appendLine(line);
+    },
+  });
+  logger.info({ scope: "extension", message: `logger initialized at level=${logLevel}` });
   const unsubscribeTrace = processManager.onEvent((event) => {
     if (event.type === "rpc_command_sent") {
-      output.appendLine(`[rpc] send id=${event.id} command=${event.command}`);
+      logger.debug({
+        scope: "rpc",
+        correlationId: event.id,
+        message: "rpc command sent",
+        details: { command: event.command },
+      });
     } else if (event.type === "rpc_response") {
-      output.appendLine(
-        `[rpc] response id=${event.id ?? "n/a"} command=${event.command} success=${event.success}`,
-      );
+      logger.debug({
+        scope: "rpc",
+        correlationId: event.id,
+        message: "rpc response received",
+        details: { command: event.command, success: event.success },
+      });
     } else if (event.type === "process_exit") {
-      output.appendLine(
-        `[rpc] process_exit code=${event.code ?? "null"} signal=${event.signal ?? "null"}`,
-      );
+      logger.error({
+        scope: "rpc",
+        message: "rpc process exited",
+        details: { code: event.code ?? null, signal: event.signal ?? null },
+      });
+    } else if (event.type === "stderr") {
+      logger.warn({
+        scope: "rpc",
+        message: "rpc stderr",
+        details: { message: event.message },
+      });
     }
   });
   context.subscriptions.push({ dispose: unsubscribeTrace });
+  return logger;
 }
 
 function createRestoreState(tracker: ReturnType<typeof createSessionTracker>) {

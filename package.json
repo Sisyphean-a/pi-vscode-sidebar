@@ -5,6 +5,21 @@
   "description": "VS Code sidebar extension for Pi coding agent",
   "license": "MIT",
   "publisher": "local",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sisyphean-a/pi-vscode-sidebar.git"
+  },
+  "files": [
+    "dist/extension.cjs",
+    "dist/extension.cjs.map",
+    "dist/webview/**",
+    "assets/**",
+    "bridge/**",
+    "src/view/webview/styles.css",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/extension.cjs",
   "scripts": {
@@ -13,7 +28,11 @@
     "format": "oxlint src test bridge rolldown.config.ts --fix && oxfmt src test bridge rolldown.config.ts",
     "lint": "oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run test/unit test/integration",
+    "test:e2e": "pnpm build && pnpm exec tsx test/e2e/run-e2e.ts",
+    "test:perf": "pnpm exec vitest run --config vitest.perf.config.ts",
+    "package:vsix": "pnpm build && node scripts/package-vsix.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "verify": "pnpm test && pnpm lint && pnpm typecheck"
   },
   "contributes": {
@@ -67,22 +86,33 @@
         "piSidebar.logLevel": {
           "type": "string",
           "default": "info",
-          "enum": ["error", "warn", "info", "debug"],
+          "enum": [
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ],
           "description": "Extension log verbosity."
         }
       }
     }
   },
-  "activationEvents": ["onView:piSidebar.main", "onCommand:piSidebar.focus"],
+  "activationEvents": [
+    "onView:piSidebar.main",
+    "onCommand:piSidebar.focus"
+  ],
   "engines": {
     "vscode": "^1.110.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "@types/vscode": "^1.110.0",
+    "@vscode/test-electron": "^2.5.2",
+    "jsdom": "^29.1.1",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0",
     "rolldown": "^1.0.0-rc.10",
+    "tsx": "^4.22.3",
     "typescript": "^5.9.3",
     "vitest": "^4.0.7"
   },

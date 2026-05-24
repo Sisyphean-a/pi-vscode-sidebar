@@ -3,6 +3,7 @@ import type { PiRpcProcessManager, ProcessEvent } from "./process-manager.ts";
 import type { RpcSessionStateStore } from "./state-store.ts";
 import type { HostToUiMessage, UiToHostMessage } from "../view/protocol.ts";
 import type { RpcCommand, RpcExtensionUIResponse, RpcSessionState } from "../shared/rpc-types.ts";
+import type { Logger } from "./logger.ts";
 
 export interface SidebarController {
   connect(sink: (message: HostToUiMessage) => void): () => void;
@@ -17,6 +18,7 @@ export interface SidebarControllerOptions {
   ensureStarted(): Promise<void>;
   onRpcState?(state: RpcSessionState): Promise<void> | void;
   extensionUiTimeoutMs?: number;
+  logger?: Logger;
 }
 
 const DEFAULT_EXTENSION_UI_TIMEOUT_MS = 120000;
@@ -47,45 +49,64 @@ class SidebarControllerImpl implements SidebarController {
   }
 
   async handleUiMessage(message: UiToHostMessage): Promise<void> {
+    this.options.logger?.debug({
+      scope: "controller",
+      correlationId: message.correlationId,
+      message: `ui message received: ${message.type}`,
+    });
+
     switch (message.type) {
       case "ui_ready":
         await this.syncState();
         return;
       case "send_prompt":
-        await this.onSendPrompt(message.text, message.images);
+        await this.onSendPrompt(message.text, message.images, message.correlationId);
         return;
       case "abort":
-        await this.onSimpleCommand({ type: "abort" }, "idle");
+        await this.onSimpleCommand({ type: "abort" }, "idle", message.correlationId);
         return;
       case "new_session":
-        await this.onSimpleCommand({ type: "new_session" }, "idle");
+        await this.onSimpleCommand({ type: "new_session" }, "idle", message.correlationId);
         return;
       case "switch_session":
         await this.onSimpleCommand(
           { type: "switch_session", sessionPath: message.sessionPath },
           "idle",
+          message.correlationId,
         );
         return;
       case "set_session_name":
-        await this.onSimpleCommand({ type: "set_session_name", name: message.name }, "idle");
+        await this.onSimpleCommand(
+          { type: "set_session_name", name: message.name },
+          "idle",
+          message.correlationId,
+        );
         return;
       case "export_html":
-        await this.onRpcQuery({ type: "export_html", outputPath: message.outputPath });
+        await this.onRpcQuery(
+          { type: "export_html", outputPath: message.outputPath },
+          message.correlationId,
+        );
         return;
       case "get_available_models":
-        await this.onRpcQuery({ type: "get_available_models" });
+        await this.onRpcQuery({ type: "get_available_models" }, message.correlationId);
         return;
       case "get_session_stats":
-        await this.onRpcQuery({ type: "get_session_stats" });
+        await this.onRpcQuery({ type: "get_session_stats" }, message.correlationId);
         return;
       case "set_model":
         await this.onSimpleCommand(
           { type: "set_model", provider: message.provider, modelId: message.modelId },
           this.options.stateStore.snapshot().phase,
+          message.correlationId,
         );
         return;
       case "set_thinking_level":
-        await this.onSimpleCommand({ type: "set_thinking_level", level: message.level }, "idle");
+        await this.onSimpleCommand(
+          { type: "set_thinking_level", level: message.level },
+          "idle",
+          message.correlationId,
+        );
         return;
       case "respond_extension_ui":
         await this.onExtensionUiResponse(message.requestId, message.payload);
@@ -102,6 +123,7 @@ class SidebarControllerImpl implements SidebarController {
   private async onSendPrompt(
     text: string,
     images: Array<{ path: string }> | undefined,
+    correlationId: string | undefined,
   ): Promise<void> {
     const phase = this.options.stateStore.snapshot().phase;
     if (phase !== "idle") {
@@ -116,29 +138,32 @@ class SidebarControllerImpl implements SidebarController {
     await this.options.ensureStarted();
     this.options.stateStore.markStreaming();
     this.emitState();
-    const response = await this.options.rpcClient.send({ type: "prompt", message: text, images });
-    this.reportCommandFailure(response);
+    const response = await this.options.rpcClient.send(
+      withCommandId({ type: "prompt", message: text, images }, correlationId),
+    );
+    this.reportCommandFailure(response, correlationId);
   }
 
   private async onSimpleCommand(
     command: RpcCommand,
     phase: "idle" | "streaming" | "awaiting_extension_ui" | "process_dead",
+    correlationId: string | undefined,
   ): Promise<void> {
     await this.options.ensureStarted();
     if (phase === "idle") this.options.stateStore.markIdle();
-    const response = await this.options.rpcClient.send(command);
-    this.reportCommandFailure(response);
+    const response = await this.options.rpcClient.send(withCommandId(command, correlationId));
+    this.reportCommandFailure(response, correlationId);
     await this.syncState();
   }
 
-  private async onRpcQuery(command: RpcCommand): Promise<void> {
+  private async onRpcQuery(command: RpcCommand, correlationId: string | undefined): Promise<void> {
     await this.options.ensureStarted();
-    const response = await this.options.rpcClient.send(command);
-    this.reportCommandFailure(response);
+    const response = await this.options.rpcClient.send(withCommandId(command, correlationId));
+    this.reportCommandFailure(response, correlationId);
     if (!response.success) return;
     this.emit({
       type: "event",
-      data: { type: "query_result", command: command.type, data: response.data },
+      data: { type: "query_result", command: command.type, data: response.data, correlationId },
     });
     await this.syncState();
   }
@@ -155,10 +180,20 @@ class SidebarControllerImpl implements SidebarController {
 
   private async onProcessEvent(event: ProcessEvent): Promise<void> {
     if (event.type === "stderr") {
+      this.options.logger?.warn({
+        scope: "controller",
+        message: "rpc stderr forwarded to ui",
+        details: { message: event.message },
+      });
       this.emit({ type: "error", scope: "rpc", message: event.message });
       return;
     }
     if (event.type === "process_exit") {
+      this.options.logger?.error({
+        scope: "controller",
+        message: "rpc process exit observed",
+        details: { code: event.code ?? null, signal: event.signal ?? null },
+      });
       this.options.stateStore.markProcessDead(`RPC process exited (${event.code ?? "unknown"})`);
       this.emitState();
       return;
@@ -167,6 +202,11 @@ class SidebarControllerImpl implements SidebarController {
       return;
     }
     if (event.type === "extension_ui_request") {
+      this.options.logger?.debug({
+        scope: "controller",
+        correlationId: event.id,
+        message: `extension ui request: ${event.method}`,
+      });
       this.options.stateStore.markAwaitingExtensionUi();
       this.emitState();
       this.scheduleExtensionUiTimeout(event.id);
@@ -211,12 +251,21 @@ class SidebarControllerImpl implements SidebarController {
     this.sink?.(message);
   }
 
-  private reportCommandFailure(response: { success: boolean; error?: string }): void {
+  private reportCommandFailure(
+    response: { success: boolean; error?: string },
+    correlationId?: string,
+  ): void {
     if (response.success) return;
+    const cidSuffix = correlationId ? ` (correlationId: ${correlationId})` : "";
+    this.options.logger?.error({
+      scope: "controller",
+      correlationId,
+      message: response.error ?? "RPC command failed.",
+    });
     this.emit({
       type: "error",
       scope: "rpc",
-      message: response.error ?? "RPC command failed.",
+      message: `${response.error ?? "RPC command failed."}${cidSuffix}`,
     });
   }
 
@@ -274,4 +323,9 @@ function normalizeTimeoutMs(timeoutMs: number | undefined): number {
     return DEFAULT_EXTENSION_UI_TIMEOUT_MS;
   }
   return Math.max(1000, Math.trunc(timeoutMs));
+}
+
+function withCommandId(command: RpcCommand, correlationId: string | undefined): RpcCommand {
+  if (!correlationId || command.id) return command;
+  return { ...command, id: correlationId };
 }

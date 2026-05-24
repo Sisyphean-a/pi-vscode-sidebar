@@ -51,6 +51,39 @@ describe("bridge parameter validation", () => {
     ).toThrowError("Invalid workspace edit range at index 0");
   });
 
+  it("throws when required string exceeds max length", () => {
+    expect(() => readRequiredString("x".repeat(6), "name", 5)).toThrowError(
+      "Parameter too long: name (max 5)",
+    );
+  });
+
+  it("throws when workspace edit count exceeds limit", () => {
+    const edits = Array.from({ length: 201 }, () => ({
+      filePath: "a.ts",
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 1 },
+      },
+      newText: "x",
+    }));
+    expect(() => readWorkspaceEdits(edits)).toThrowError("Too many edits: 201 (max 200)");
+  });
+
+  it("throws when workspace edit text is too long", () => {
+    expect(() =>
+      readWorkspaceEdits([
+        {
+          filePath: "a.ts",
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 1 },
+          },
+          newText: "x".repeat(50001),
+        },
+      ]),
+    ).toThrowError("Workspace edit text too long at index 0 (max 50000)");
+  });
+
   it("accepts a valid workspace edit payload", () => {
     const edits = readWorkspaceEdits([
       {

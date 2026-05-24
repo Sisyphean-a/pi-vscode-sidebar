@@ -46,7 +46,7 @@ export async function saveDocument(params: Record<string, unknown>) {
 }
 
 export async function executeCodeAction(params: Record<string, unknown>, state: BridgeState) {
-  const actionId = readRequiredString(params.actionId, "actionId");
+  const actionId = readRequiredString(params.actionId, "actionId", 256);
   const cached = state.codeActions.get(actionId);
   if (!cached) throw new Error(`Unknown or expired code action id: ${actionId}`);
 
@@ -75,6 +75,11 @@ export async function executeCodeAction(params: Record<string, unknown>, state: 
     title: action.title,
     editApplied,
     commandExecuted,
+    audit: {
+      actionKind: action instanceof vscode.CodeAction ? "code_action" : "command",
+      hadWorkspaceEdit: action instanceof vscode.CodeAction ? !!action.edit : false,
+      hadCommand: action instanceof vscode.CodeAction ? !!action.command : true,
+    },
   };
 }
 
@@ -99,6 +104,14 @@ export async function applyWorkspaceEdit(params: Record<string, unknown>) {
       filePath: resolveFileUri(edit.filePath).fsPath,
       range: edit.range,
     })),
+    audit: {
+      editCount: edits.length,
+      totalNewTextLength: edits.reduce((sum, edit) => sum + edit.newText.length, 0),
+      maxSingleEditTextLength: edits.reduce(
+        (maxLength, edit) => Math.max(maxLength, edit.newText.length),
+        0,
+      ),
+    },
   };
 }
 

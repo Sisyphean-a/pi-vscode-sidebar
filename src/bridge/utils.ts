@@ -1,6 +1,10 @@
 import { posix, win32 } from "node:path";
 import * as vscode from "vscode";
 
+const DEFAULT_MAX_STRING_LENGTH = 10000;
+const MAX_WORKSPACE_EDIT_COUNT = 200;
+const MAX_WORKSPACE_EDIT_TEXT_LENGTH = 50000;
+
 export function getWorkspaceFolders() {
   return (vscode.workspace.workspaceFolders ?? []).map((folder, index) => ({
     index,
@@ -26,9 +30,16 @@ export function resolveFilePath(filePath: string): string {
   return pathApi.resolve(workspaceRoot, filePath);
 }
 
-export function readRequiredString(value: unknown, name: string): string {
+export function readRequiredString(
+  value: unknown,
+  name: string,
+  maxLength = DEFAULT_MAX_STRING_LENGTH,
+): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`Missing required parameter: ${name}`);
+  }
+  if (value.length > maxLength) {
+    throw new Error(`Parameter too long: ${name} (max ${maxLength})`);
   }
   return value;
 }
@@ -79,16 +90,24 @@ export function readWorkspaceEdits(value: unknown): Array<{
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error("Missing required parameter: edits");
   }
+  if (value.length > MAX_WORKSPACE_EDIT_COUNT) {
+    throw new Error(`Too many edits: ${value.length} (max ${MAX_WORKSPACE_EDIT_COUNT})`);
+  }
 
   return value.map((entry, index) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       throw new Error(`Invalid workspace edit at index ${index}`);
     }
     const record = entry as Record<string, unknown>;
-    const filePath = readRequiredString(record.filePath, `edits[${index}].filePath`);
+    const filePath = readRequiredString(record.filePath, `edits[${index}].filePath`, 4096);
     const range = readSelection(record.range);
     if (!range) throw new Error(`Invalid workspace edit range at index ${index}`);
     const newText = typeof record.newText === "string" ? record.newText : "";
+    if (newText.length > MAX_WORKSPACE_EDIT_TEXT_LENGTH) {
+      throw new Error(
+        `Workspace edit text too long at index ${index} (max ${MAX_WORKSPACE_EDIT_TEXT_LENGTH})`,
+      );
+    }
     return {
       filePath,
       range: {

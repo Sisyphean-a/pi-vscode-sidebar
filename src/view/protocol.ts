@@ -4,7 +4,7 @@ export interface UiImageInput {
   path: string;
 }
 
-export type UiToHostMessage =
+type UiToHostMessagePayload =
   | { type: "ui_ready" }
   | { type: "send_prompt"; text: string; images?: UiImageInput[] }
   | { type: "abort" }
@@ -17,6 +17,8 @@ export type UiToHostMessage =
   | { type: "set_model"; provider: string; modelId: string }
   | { type: "set_thinking_level"; level: ThinkingLevel }
   | { type: "respond_extension_ui"; requestId: string; payload: unknown };
+
+export type UiToHostMessage = UiToHostMessagePayload & { correlationId?: string };
 
 export type HostToUiMessage =
   | { type: "state"; data: unknown }
@@ -36,42 +38,42 @@ export function parseUiMessage(input: unknown): UiToHostMessage | undefined {
     case "ui_ready":
     case "abort":
     case "new_session":
-      return { type };
+      return withCorrelation({ type }, message);
     case "send_prompt":
-      return parseSendPrompt(message);
+      return withOptionalCorrelation(parseSendPrompt(message), message);
     case "switch_session":
-      return parseSwitchSession(message);
+      return withOptionalCorrelation(parseSwitchSession(message), message);
     case "set_session_name":
-      return parseSessionName(message);
+      return withOptionalCorrelation(parseSessionName(message), message);
     case "export_html":
-      return parseExportHtml(message);
+      return withCorrelation(parseExportHtml(message), message);
     case "get_available_models":
-      return { type: "get_available_models" };
+      return withCorrelation({ type: "get_available_models" }, message);
     case "get_session_stats":
-      return { type: "get_session_stats" };
+      return withCorrelation({ type: "get_session_stats" }, message);
     case "set_model":
-      return parseSetModel(message);
+      return withOptionalCorrelation(parseSetModel(message), message);
     case "set_thinking_level":
-      return parseThinkingLevel(message);
+      return withOptionalCorrelation(parseThinkingLevel(message), message);
     case "respond_extension_ui":
-      return parseExtensionUiResponse(message);
+      return withOptionalCorrelation(parseExtensionUiResponse(message), message);
     default:
       return undefined;
   }
 }
 
-function parseSessionName(message: Record<string, unknown>): UiToHostMessage | undefined {
+function parseSessionName(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
   const name = readString(message.name);
   if (!name) return undefined;
   return { type: "set_session_name", name };
 }
 
-function parseExportHtml(message: Record<string, unknown>): UiToHostMessage {
+function parseExportHtml(message: Record<string, unknown>): UiToHostMessagePayload {
   const outputPath = readString(message.outputPath);
   return outputPath ? { type: "export_html", outputPath } : { type: "export_html" };
 }
 
-function parseSendPrompt(message: Record<string, unknown>): UiToHostMessage | undefined {
+function parseSendPrompt(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
   const text = readString(message.text);
   if (!text) return undefined;
   const images = parseImages(message.images);
@@ -79,26 +81,28 @@ function parseSendPrompt(message: Record<string, unknown>): UiToHostMessage | un
   return images ? { type: "send_prompt", text, images } : { type: "send_prompt", text };
 }
 
-function parseSwitchSession(message: Record<string, unknown>): UiToHostMessage | undefined {
+function parseSwitchSession(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
   const sessionPath = readString(message.sessionPath);
   if (!sessionPath) return undefined;
   return { type: "switch_session", sessionPath };
 }
 
-function parseSetModel(message: Record<string, unknown>): UiToHostMessage | undefined {
+function parseSetModel(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
   const provider = readString(message.provider);
   const modelId = readString(message.modelId);
   if (!provider || !modelId) return undefined;
   return { type: "set_model", provider, modelId };
 }
 
-function parseThinkingLevel(message: Record<string, unknown>): UiToHostMessage | undefined {
+function parseThinkingLevel(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
   const level = readString(message.level);
   if (!isThinkingLevel(level)) return undefined;
   return { type: "set_thinking_level", level };
 }
 
-function parseExtensionUiResponse(message: Record<string, unknown>): UiToHostMessage | undefined {
+function parseExtensionUiResponse(
+  message: Record<string, unknown>,
+): UiToHostMessagePayload | undefined {
   const requestId = readString(message.requestId);
   if (!requestId) return undefined;
   return { type: "respond_extension_ui", requestId, payload: message.payload };
@@ -135,4 +139,21 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function withOptionalCorrelation<TMessage extends UiToHostMessagePayload>(
+  message: TMessage | undefined,
+  payload: Record<string, unknown>,
+): UiToHostMessage | undefined {
+  if (!message) return undefined;
+  return withCorrelation(message, payload);
+}
+
+function withCorrelation<TMessage extends UiToHostMessagePayload>(
+  message: TMessage,
+  payload: Record<string, unknown>,
+): UiToHostMessage {
+  const correlationId = readString(payload.correlationId);
+  if (!correlationId) return message;
+  return { ...message, correlationId };
 }

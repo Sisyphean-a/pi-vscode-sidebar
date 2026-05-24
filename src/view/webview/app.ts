@@ -100,55 +100,68 @@ const renderExtensionUiRequest = createExtensionUiRenderer({
   escapeHtml,
   expectElement,
   postResponse(requestId, payload) {
-    vscode.postMessage({ type: "respond_extension_ui", requestId, payload });
+    postUiMessage({ type: "respond_extension_ui", requestId, payload });
+  },
+  updateStatus(statusKey, statusText) {
+    updateStatusBadge(statusKey, statusText);
+  },
+  updateTitle(nextTitle) {
+    title.textContent = nextTitle;
+  },
+  setEditorText(text) {
+    promptInput.value = text;
+    promptInput.focus();
+  },
+  queueNotice(message) {
+    queueEvent("event", message, { type: "extension_ui_notice", message });
   },
 });
 
 sendButton.addEventListener("click", () => {
   const text = promptInput.value.trim();
   if (!text) return;
-  vscode.postMessage({ type: "send_prompt", text });
+  postUiMessage({ type: "send_prompt", text });
   promptInput.value = "";
 });
 newSessionButton.addEventListener("click", () => {
-  vscode.postMessage({ type: "new_session" });
+  postUiMessage({ type: "new_session" });
 });
 abortButton.addEventListener("click", () => {
-  vscode.postMessage({ type: "abort" });
+  postUiMessage({ type: "abort" });
 });
 reconnectButton.addEventListener("click", () => {
-  vscode.postMessage({ type: "new_session" });
+  postUiMessage({ type: "new_session" });
 });
 setModelButton.addEventListener("click", () => {
   const provider = modelProviderInput.value.trim();
   const modelId = modelIdInput.value.trim();
   if (!provider || !modelId) return;
-  vscode.postMessage({ type: "set_model", provider, modelId });
+  postUiMessage({ type: "set_model", provider, modelId });
 });
 setThinkingButton.addEventListener("click", () => {
   const level = thinkingLevelSelect.value;
-  vscode.postMessage({ type: "set_thinking_level", level });
+  postUiMessage({ type: "set_thinking_level", level });
 });
 switchSessionButton.addEventListener("click", () => {
   const sessionPath = switchSessionInput.value.trim();
   if (!sessionPath) return;
-  vscode.postMessage({ type: "switch_session", sessionPath });
+  postUiMessage({ type: "switch_session", sessionPath });
 });
 setSessionNameButton.addEventListener("click", () => {
   const name = sessionNameInput.value.trim();
   if (!name) return;
-  vscode.postMessage({ type: "set_session_name", name });
+  postUiMessage({ type: "set_session_name", name });
 });
 exportHtmlButton.addEventListener("click", () => {
   const outputPath = exportPathInput.value.trim();
-  if (outputPath) vscode.postMessage({ type: "export_html", outputPath });
-  else vscode.postMessage({ type: "export_html" });
+  if (outputPath) postUiMessage({ type: "export_html", outputPath });
+  else postUiMessage({ type: "export_html" });
 });
 loadModelsButton.addEventListener("click", () => {
-  vscode.postMessage({ type: "get_available_models" });
+  postUiMessage({ type: "get_available_models" });
 });
 sessionStatsButton.addEventListener("click", () => {
-  vscode.postMessage({ type: "get_session_stats" });
+  postUiMessage({ type: "get_session_stats" });
 });
 
 window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
@@ -176,7 +189,7 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   }
 });
 
-vscode.postMessage({ type: "ui_ready" });
+postUiMessage({ type: "ui_ready" });
 
 function expectElement<TElement extends HTMLElement>(id: string): TElement {
   const element = document.getElementById(id);
@@ -185,7 +198,7 @@ function expectElement<TElement extends HTMLElement>(id: string): TElement {
 }
 
 function renderSystemNotice(text: string): void {
-  statusBadge.textContent = "connected";
+  updateStatusBadge("connected", "connected");
   systemMessage.innerHTML = `<p>${escapeHtml(text)}</p>`;
 }
 
@@ -193,11 +206,16 @@ function updateState(data: Record<string, unknown>): void {
   const view = asRecord(data.view);
   const rpc = asRecord(data.rpc);
   const phase = readString(view?.phase) ?? "idle";
-  statusBadge.textContent = phase;
+  updateStatusBadge(phase);
   if (phase === "process_dead") reconnectButton.classList.remove("hidden");
   else reconnectButton.classList.add("hidden");
   const sessionName = readString(asRecord(rpc)?.sessionName);
   title.textContent = sessionName ? `Ready · ${sessionName}` : "Ready";
+}
+
+function updateStatusBadge(statusKey: string, statusText?: string): void {
+  statusBadge.textContent = statusText?.trim() ? statusText : statusKey;
+  statusBadge.dataset.statusKey = statusKey;
 }
 
 function queueEvent(kind: "event" | "error", text: string, raw?: unknown): void {
@@ -297,4 +315,22 @@ function stringifyJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function postUiMessage(message: Record<string, unknown>): void {
+  const type = readString(message.type);
+  if (type === "ui_ready") {
+    vscode.postMessage(message);
+    return;
+  }
+  vscode.postMessage({
+    ...message,
+    correlationId: createCorrelationId(),
+  });
+}
+
+function createCorrelationId(): string {
+  const timePart = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `ui-${timePart}-${randomPart}`;
 }

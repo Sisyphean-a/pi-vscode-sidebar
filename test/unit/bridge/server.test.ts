@@ -11,6 +11,15 @@ afterEach(async () => {
 });
 
 describe("createBridgeHttpServer", () => {
+  it("rejects empty token at startup", async () => {
+    await expect(
+      createBridgeHttpServer({
+        token: "   ",
+        handleRpc: async () => ({ ok: true }),
+      }),
+    ).rejects.toThrowError("Bridge token must not be empty.");
+  });
+
   it("rejects unauthorized requests", async () => {
     const bridge = await createBridgeHttpServer({
       token: "secret-token",
@@ -26,7 +35,30 @@ describe("createBridgeHttpServer", () => {
     });
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({ error: "Unauthorized" });
+    await expect(response.json()).resolves.toMatchObject({
+      code: "BRIDGE_UNAUTHORIZED",
+      message: "Unauthorized",
+    });
+  });
+
+  it("accepts header name case variants for authorization", async () => {
+    const bridge = await createBridgeHttpServer({
+      token: "secret-token",
+      handleRpc: async () => ({ ok: true }),
+    });
+    disposers.push(bridge.dispose);
+
+    const response = await fetch(`${bridge.url}/rpc`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-Pi-Vscode-Authorization": "secret-token",
+      },
+      body: JSON.stringify({ method: "getStatus", params: {} }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ result: { ok: true } });
   });
 
   it("rejects oversized payloads", async () => {
@@ -53,7 +85,56 @@ describe("createBridgeHttpServer", () => {
 
     expect(response.status).toBe(413);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Request body exceeds 40 bytes",
+      code: "BRIDGE_PAYLOAD_TOO_LARGE",
+      message: "Request body exceeds limit",
+    });
+  });
+
+  it("rejects non-object params payload", async () => {
+    const bridge = await createBridgeHttpServer({
+      token: "secret-token",
+      handleRpc: async () => ({ ok: true }),
+    });
+    disposers.push(bridge.dispose);
+
+    const response = await fetch(`${bridge.url}/rpc`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-pi-vscode-authorization": "secret-token",
+      },
+      body: JSON.stringify({ method: "getStatus", params: [] }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "BRIDGE_INVALID_PARAMS",
+      message: "RPC params must be an object",
+    });
+  });
+
+  it("returns unknown method error as client error", async () => {
+    const bridge = await createBridgeHttpServer({
+      token: "secret-token",
+      handleRpc: async (method) => {
+        throw new Error(`Unknown bridge method: ${method}`);
+      },
+    });
+    disposers.push(bridge.dispose);
+
+    const response = await fetch(`${bridge.url}/rpc`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-pi-vscode-authorization": "secret-token",
+      },
+      body: JSON.stringify({ method: "notImplemented", params: {} }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "BRIDGE_UNKNOWN_METHOD",
+      message: "Unknown bridge method: notImplemented",
     });
   });
 
@@ -79,7 +160,8 @@ describe("createBridgeHttpServer", () => {
 
     expect(response.status).toBe(504);
     await expect(response.json()).resolves.toMatchObject({
-      error: "Bridge RPC request timed out after 1000ms",
+      code: "BRIDGE_RPC_TIMEOUT",
+      message: "Bridge RPC request timed out after 1000ms",
     });
   });
 });

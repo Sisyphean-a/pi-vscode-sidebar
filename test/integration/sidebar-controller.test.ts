@@ -86,6 +86,31 @@ describe("sidebar controller integration flow", () => {
       method: "input",
       title: "Need input",
     });
+    processListener?.({
+      type: "extension_ui_request",
+      id: "req-2",
+      method: "notify",
+      message: "Heads up",
+    });
+    processListener?.({
+      type: "extension_ui_request",
+      id: "req-3",
+      method: "setStatus",
+      statusKey: "busy",
+      statusText: "Working",
+    });
+    processListener?.({
+      type: "extension_ui_request",
+      id: "req-4",
+      method: "setTitle",
+      title: "Session A",
+    });
+    processListener?.({
+      type: "extension_ui_request",
+      id: "req-5",
+      method: "set_editor_text",
+      text: "draft",
+    });
     await controller.handleUiMessage({
       type: "respond_extension_ui",
       requestId: "req-1",
@@ -105,6 +130,10 @@ describe("sidebar controller integration flow", () => {
     expect(emitted.some((entry) => hasType(entry, "event"))).toBe(true);
     expect(emitted.some((entry) => hasStatePhase(entry, "idle"))).toBe(true);
     expect(emitted.some((entry) => hasStatePhase(entry, "process_dead"))).toBe(true);
+    expect(hasExtensionUiMethod(emitted, "notify")).toBe(true);
+    expect(hasExtensionUiMethod(emitted, "setStatus")).toBe(true);
+    expect(hasExtensionUiMethod(emitted, "setTitle")).toBe(true);
+    expect(hasExtensionUiMethod(emitted, "set_editor_text")).toBe(true);
   });
 });
 
@@ -116,4 +145,12 @@ function hasStatePhase(payload: unknown, phase: string): boolean {
   if (!hasType(payload, "state")) return false;
   const data = (payload as { data?: { view?: { phase?: string } } }).data;
   return data?.view?.phase === phase;
+}
+
+function hasExtensionUiMethod(payloads: unknown[], method: string): boolean {
+  return payloads.some((payload) => {
+    if (!hasType(payload, "extension_ui_request")) return false;
+    const data = (payload as { data?: { method?: string } }).data;
+    return data?.method === method;
+  });
 }

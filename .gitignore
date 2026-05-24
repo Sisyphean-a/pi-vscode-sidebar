@@ -44,3 +44,5 @@ Thumbs.db
 .npm/
 .pi_config/
 .opencode/
+.codegraph/
+.vscode-test/
