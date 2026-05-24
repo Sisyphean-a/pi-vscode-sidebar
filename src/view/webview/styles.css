@@ -1,0 +1,167 @@
+:root {
+  --bg: radial-gradient(circle at 10% 10%, #1b2939 0%, #0f1319 55%, #0a0d11 100%);
+  --panel: #121921;
+  --panel-border: #223344;
+  --text: #e6edf5;
+  --muted: #91a7bd;
+  --accent: #4cc9b0;
+  --accent-strong: #f0a85c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background: var(--bg);
+}
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: linear-gradient(120deg, #151f2a 0%, #101720 100%);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 4px 0 0;
+  font-size: 24px;
+}
+
+.badge {
+  align-self: start;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, #fff 0%);
+  color: var(--accent);
+}
+
+.feed {
+  flex: 1;
+  display: grid;
+  gap: 10px;
+}
+
+.card {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 92%, #000 8%);
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.controls {
+  display: grid;
+  gap: 8px;
+}
+
+.line {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.line input,
+.line select,
+.line textarea,
+.line button {
+  width: 100%;
+}
+
+.line input,
+.line select,
+.line textarea {
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: #0f151d;
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.event-feed {
+  display: grid;
+  gap: 10px;
+}
+
+.event-card p {
+  color: var(--text);
+}
+
+.error-card {
+  border-color: #c9776c;
+}
+
+.error-card p {
+  color: #ffc4b7;
+}
+
+.hidden {
+  display: none;
+}
+
+.composer {
+  display: grid;
+  gap: 10px;
+}
+
+.composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 70px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: #0f151d;
+  color: var(--text);
+  padding: 12px;
+  font: inherit;
+}
+
+.composer button {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #0b1310;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.composer button:hover {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 700px) {
+  .line {
+    grid-template-columns: 1fr;
+  }
+}

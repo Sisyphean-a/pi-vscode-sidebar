@@ -1,0 +1,90 @@
+{
+  "name": "pi-vscode-sidebar",
+  "displayName": "Pi Sidebar",
+  "version": "0.0.1",
+  "description": "VS Code sidebar extension for Pi coding agent",
+  "license": "MIT",
+  "publisher": "local",
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "rolldown -c rolldown.config.ts",
+    "dev": "rolldown -c rolldown.config.ts -w",
+    "format": "oxlint src test bridge rolldown.config.ts --fix && oxfmt src test bridge rolldown.config.ts",
+    "lint": "oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "pnpm test && pnpm lint && pnpm typecheck"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "piSidebar.focus",
+        "title": "Pi Sidebar: Focus Sidebar"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "piSidebar",
+          "title": "Pi",
+          "icon": "assets/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "piSidebar": [
+        {
+          "type": "webview",
+          "id": "piSidebar.main",
+          "name": "Chat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Pi Sidebar",
+      "properties": {
+        "piSidebar.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the pi binary. Leave empty for auto-detection."
+        },
+        "piSidebar.rpcTimeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "description": "RPC request timeout in milliseconds."
+        },
+        "piSidebar.bridgeEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable VS Code bridge tools for Pi RPC sessions."
+        },
+        "piSidebar.bridgeRequestTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "Bridge RPC request timeout in milliseconds."
+        },
+        "piSidebar.logLevel": {
+          "type": "string",
+          "default": "info",
+          "enum": ["error", "warn", "info", "debug"],
+          "description": "Extension log verbosity."
+        }
+      }
+    }
+  },
+  "activationEvents": ["onView:piSidebar.main", "onCommand:piSidebar.focus"],
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/vscode": "^1.110.0",
+    "oxfmt": "^0.41.0",
+    "oxlint": "^1.56.0",
+    "rolldown": "^1.0.0-rc.10",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.7"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

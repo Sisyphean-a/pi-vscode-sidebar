@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+*.tsbuildinfo
+*.vsix
+
+# Logs and runtime output
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+tui-debug.log
+*.cpuprofile
+out.jsonl
+syntax.jsonl
+out.html
+pi-*.html
+
+# Coverage / test artifacts
+coverage/
+.nyc_output/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Editor / IDE files
+.vscode/
+.idea/
+.zed/
+.claude/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local tool caches
+.npm/
+.pi_config/
+.opencode/

@@ -1,0 +1,277 @@
+import type { RpcClient } from "./rpc-client.ts";
+import type { PiRpcProcessManager, ProcessEvent } from "./process-manager.ts";
+import type { RpcSessionStateStore } from "./state-store.ts";
+import type { HostToUiMessage, UiToHostMessage } from "../view/protocol.ts";
+import type { RpcCommand, RpcExtensionUIResponse, RpcSessionState } from "../shared/rpc-types.ts";
+
+export interface SidebarController {
+  connect(sink: (message: HostToUiMessage) => void): () => void;
+  handleUiMessage(message: UiToHostMessage): Promise<void>;
+  dispose(): Promise<void>;
+}
+
+export interface SidebarControllerOptions {
+  processManager: PiRpcProcessManager;
+  rpcClient: RpcClient;
+  stateStore: RpcSessionStateStore;
+  ensureStarted(): Promise<void>;
+  onRpcState?(state: RpcSessionState): Promise<void> | void;
+  extensionUiTimeoutMs?: number;
+}
+
+const DEFAULT_EXTENSION_UI_TIMEOUT_MS = 120000;
+
+export function createSidebarController(options: SidebarControllerOptions): SidebarController {
+  return new SidebarControllerImpl(options);
+}
+
+class SidebarControllerImpl implements SidebarController {
+  private sink: ((message: HostToUiMessage) => void) | undefined;
+  private readonly unsubscribe: () => void;
+  private readonly extensionUiTimeoutMs: number;
+  private readonly pendingExtensionUiRequests = new Map<string, NodeJS.Timeout>();
+
+  constructor(private readonly options: SidebarControllerOptions) {
+    this.extensionUiTimeoutMs = normalizeTimeoutMs(options.extensionUiTimeoutMs);
+    this.unsubscribe = this.options.processManager.onEvent((event) => {
+      void this.onProcessEvent(event);
+    });
+  }
+
+  connect(sink: (message: HostToUiMessage) => void): () => void {
+    this.sink = sink;
+    void this.syncState();
+    return () => {
+      if (this.sink === sink) this.sink = undefined;
+    };
+  }
+
+  async handleUiMessage(message: UiToHostMessage): Promise<void> {
+    switch (message.type) {
+      case "ui_ready":
+        await this.syncState();
+        return;
+      case "send_prompt":
+        await this.onSendPrompt(message.text, message.images);
+        return;
+      case "abort":
+        await this.onSimpleCommand({ type: "abort" }, "idle");
+        return;
+      case "new_session":
+        await this.onSimpleCommand({ type: "new_session" }, "idle");
+        return;
+      case "switch_session":
+        await this.onSimpleCommand(
+          { type: "switch_session", sessionPath: message.sessionPath },
+          "idle",
+        );
+        return;
+      case "set_session_name":
+        await this.onSimpleCommand({ type: "set_session_name", name: message.name }, "idle");
+        return;
+      case "export_html":
+        await this.onRpcQuery({ type: "export_html", outputPath: message.outputPath });
+        return;
+      case "get_available_models":
+        await this.onRpcQuery({ type: "get_available_models" });
+        return;
+      case "get_session_stats":
+        await this.onRpcQuery({ type: "get_session_stats" });
+        return;
+      case "set_model":
+        await this.onSimpleCommand(
+          { type: "set_model", provider: message.provider, modelId: message.modelId },
+          this.options.stateStore.snapshot().phase,
+        );
+        return;
+      case "set_thinking_level":
+        await this.onSimpleCommand({ type: "set_thinking_level", level: message.level }, "idle");
+        return;
+      case "respond_extension_ui":
+        await this.onExtensionUiResponse(message.requestId, message.payload);
+        return;
+    }
+  }
+
+  async dispose(): Promise<void> {
+    this.unsubscribe();
+    this.clearAllExtensionUiTimers();
+    await this.options.processManager.stop();
+  }
+
+  private async onSendPrompt(
+    text: string,
+    images: Array<{ path: string }> | undefined,
+  ): Promise<void> {
+    const phase = this.options.stateStore.snapshot().phase;
+    if (phase !== "idle") {
+      this.emit({
+        type: "error",
+        scope: "ui",
+        message: `Cannot send prompt while phase is "${phase}".`,
+      });
+      return;
+    }
+
+    await this.options.ensureStarted();
+    this.options.stateStore.markStreaming();
+    this.emitState();
+    const response = await this.options.rpcClient.send({ type: "prompt", message: text, images });
+    this.reportCommandFailure(response);
+  }
+
+  private async onSimpleCommand(
+    command: RpcCommand,
+    phase: "idle" | "streaming" | "awaiting_extension_ui" | "process_dead",
+  ): Promise<void> {
+    await this.options.ensureStarted();
+    if (phase === "idle") this.options.stateStore.markIdle();
+    const response = await this.options.rpcClient.send(command);
+    this.reportCommandFailure(response);
+    await this.syncState();
+  }
+
+  private async onRpcQuery(command: RpcCommand): Promise<void> {
+    await this.options.ensureStarted();
+    const response = await this.options.rpcClient.send(command);
+    this.reportCommandFailure(response);
+    if (!response.success) return;
+    this.emit({
+      type: "event",
+      data: { type: "query_result", command: command.type, data: response.data },
+    });
+    await this.syncState();
+  }
+
+  private async onExtensionUiResponse(requestId: string, payload: unknown): Promise<void> {
+    this.clearExtensionUiTimer(requestId);
+    await this.options.ensureStarted();
+    const responsePayload = normalizeExtensionUiResponse(requestId, payload);
+    const response = await this.options.rpcClient.sendExtensionUiResponse(responsePayload);
+    this.reportCommandFailure(response);
+    this.options.stateStore.markStreaming();
+    this.emitState();
+  }
+
+  private async onProcessEvent(event: ProcessEvent): Promise<void> {
+    if (event.type === "stderr") {
+      this.emit({ type: "error", scope: "rpc", message: event.message });
+      return;
+    }
+    if (event.type === "process_exit") {
+      this.options.stateStore.markProcessDead(`RPC process exited (${event.code ?? "unknown"})`);
+      this.emitState();
+      return;
+    }
+    if (event.type === "rpc_command_sent" || event.type === "rpc_response") {
+      return;
+    }
+    if (event.type === "extension_ui_request") {
+      this.options.stateStore.markAwaitingExtensionUi();
+      this.emitState();
+      this.scheduleExtensionUiTimeout(event.id);
+      this.emit({ type: "extension_ui_request", data: event });
+      return;
+    }
+
+    if (event.type === "agent_start" || event.type === "message_update") {
+      this.options.stateStore.markStreaming();
+      this.emitState();
+    } else if (event.type === "agent_end") {
+      this.clearAllExtensionUiTimers();
+      this.options.stateStore.markIdle();
+      this.emitState();
+      await this.syncState();
+    }
+    this.emit({ type: "event", data: event });
+  }
+
+  private async syncState(): Promise<void> {
+    const rpcState = await this.options.rpcClient.getState().catch(() => undefined);
+    if (rpcState) await this.options.onRpcState?.(rpcState);
+    this.emit({
+      type: "state",
+      data: {
+        view: this.options.stateStore.snapshot(),
+        rpc: rpcState,
+      },
+    });
+  }
+
+  private emitState(): void {
+    this.emit({
+      type: "state",
+      data: {
+        view: this.options.stateStore.snapshot(),
+      },
+    });
+  }
+
+  private emit(message: HostToUiMessage): void {
+    this.sink?.(message);
+  }
+
+  private reportCommandFailure(response: { success: boolean; error?: string }): void {
+    if (response.success) return;
+    this.emit({
+      type: "error",
+      scope: "rpc",
+      message: response.error ?? "RPC command failed.",
+    });
+  }
+
+  private scheduleExtensionUiTimeout(requestId: string): void {
+    this.clearExtensionUiTimer(requestId);
+    const timer = setTimeout(() => {
+      void this.onExtensionUiTimeout(requestId);
+    }, this.extensionUiTimeoutMs);
+    this.pendingExtensionUiRequests.set(requestId, timer);
+  }
+
+  private async onExtensionUiTimeout(requestId: string): Promise<void> {
+    this.pendingExtensionUiRequests.delete(requestId);
+    this.emit({
+      type: "error",
+      scope: "rpc",
+      message: `Extension UI request timed out: ${requestId}`,
+    });
+    const response = await this.options.rpcClient.sendExtensionUiResponse({
+      type: "extension_ui_response",
+      id: requestId,
+      cancelled: true,
+    });
+    this.reportCommandFailure(response);
+    await this.syncState();
+  }
+
+  private clearExtensionUiTimer(requestId: string): void {
+    const timer = this.pendingExtensionUiRequests.get(requestId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.pendingExtensionUiRequests.delete(requestId);
+  }
+
+  private clearAllExtensionUiTimers(): void {
+    for (const timer of this.pendingExtensionUiRequests.values()) {
+      clearTimeout(timer);
+    }
+    this.pendingExtensionUiRequests.clear();
+  }
+}
+
+function normalizeExtensionUiResponse(requestId: string, payload: unknown): RpcExtensionUIResponse {
+  if (payload === null || payload === undefined) {
+    return { type: "extension_ui_response", id: requestId, cancelled: true };
+  }
+  if (typeof payload === "boolean") {
+    return { type: "extension_ui_response", id: requestId, confirmed: payload };
+  }
+  return { type: "extension_ui_response", id: requestId, value: String(payload) };
+}
+
+function normalizeTimeoutMs(timeoutMs: number | undefined): number {
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) {
+    return DEFAULT_EXTENSION_UI_TIMEOUT_MS;
+  }
+  return Math.max(1000, Math.trunc(timeoutMs));
+}
