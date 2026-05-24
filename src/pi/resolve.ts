@@ -1,7 +1,14 @@
-import { accessSync, constants } from "node:fs";
-import { join } from "node:path";
+import { accessSync, constants, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const WIN_EXECUTABLE_EXTENSIONS = [".cmd", ".exe", ".ps1"];
+const PI_CLI_RELATIVE_PATH = [
+  "node_modules",
+  "@earendil-works",
+  "pi-coding-agent",
+  "dist",
+  "cli.js",
+];
 
 export interface ResolvePiBinaryOptions {
   customPath?: string;
@@ -12,6 +19,15 @@ export interface ResolvePiBinaryOptions {
   localAppData?: string;
   workspaceDirs?: string[];
   access?: (path: string, mode: number) => void;
+}
+
+export interface ResolvePiRuntimeOptions extends ResolvePiBinaryOptions {
+  readFile?: (path: string, encoding: "utf8") => string;
+}
+
+export interface ResolvedPiRuntime {
+  executable: string;
+  args: string[];
 }
 
 export function resolvePiBinary(options: ResolvePiBinaryOptions = {}): string {
@@ -52,6 +68,56 @@ export function resolvePiBinary(options: ResolvePiBinaryOptions = {}): string {
   return "pi";
 }
 
+export function resolvePiRuntime(options: ResolvePiRuntimeOptions = {}): ResolvedPiRuntime {
+  const binary = resolvePiBinary(options);
+  const platform = options.platform ?? process.platform;
+  const isWindows = platform === "win32";
+
+  if (!isWindows) {
+    return { executable: binary, args: [] };
+  }
+
+  const extension = getLowerCaseExtension(binary);
+  if (extension === ".exe") {
+    return { executable: binary, args: [] };
+  }
+  if (extension === "" && binary === "pi") {
+    return { executable: binary, args: [] };
+  }
+
+  const cliPath = resolvePiCliPath(binary, options);
+  return {
+    executable: resolveNodeExecutable(binary, options.access ?? accessSync, platform),
+    args: [cliPath],
+  };
+}
+
+function resolvePiCliPath(binary: string, options: ResolvePiRuntimeOptions): string {
+  const launcherText = (options.readFile ?? readFileSync)(binary, "utf8");
+  if (!launcherText.includes("pi-coding-agent") || !launcherText.includes("cli.js")) {
+    throw new Error(`Unsupported Pi launcher format: ${binary}`);
+  }
+
+  const cliPath = join(dirname(binary), ...PI_CLI_RELATIVE_PATH);
+  const access = options.access ?? accessSync;
+  if (!canAccess(access, cliPath, constants.F_OK)) {
+    throw new Error(`Pi launcher found at ${binary} but CLI entry is missing: ${cliPath}`);
+  }
+
+  return cliPath;
+}
+
+function resolveNodeExecutable(
+  binary: string,
+  access: (path: string, mode: number) => void,
+  platform: string,
+): string {
+  const localNodeName = platform === "win32" ? "node.exe" : "node";
+  const localNodePath = join(dirname(binary), localNodeName);
+  const accessMode = platform === "win32" ? constants.F_OK : constants.X_OK;
+  return canAccess(access, localNodePath, accessMode) ? localNodePath : "node";
+}
+
 function windowsGlobalDirs(options: ResolvePiBinaryOptions): string[] {
   const appData = options.appData ?? process.env.APPDATA ?? "";
   const localAppData = options.localAppData ?? process.env.LOCALAPPDATA ?? "";
@@ -86,4 +152,9 @@ function resolveWindowsExecutable(
     if (canAccess(access, candidate, constants.F_OK)) return candidate;
   }
   return undefined;
+}
+
+function getLowerCaseExtension(filePath: string): string {
+  const index = filePath.lastIndexOf(".");
+  return index >= 0 ? filePath.slice(index).toLowerCase() : "";
 }

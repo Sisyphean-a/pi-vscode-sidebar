@@ -38,7 +38,7 @@ class SidebarViewProvider implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((payload: unknown) => {
       const message = parseUiMessage(payload);
       if (!message) {
-        void vscode.window.showErrorMessage("Invalid sidebar message payload.");
+        void vscode.window.showErrorMessage("侧边栏消息格式无效。");
         return;
       }
       void this.controller.handleUiMessage(message).catch((error) => {
@@ -62,16 +62,16 @@ class SidebarViewProvider implements vscode.WebviewViewProvider {
     );
 
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
+      content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; connect-src ${webview.cspSource}; script-src 'nonce-${nonce}';"
     />
     <link href="${styleUri}" rel="stylesheet" />
-    <title>Pi Sidebar</title>
+    <title>Pi 侧边栏</title>
   </head>
   <body>
     <div id="app"></div>

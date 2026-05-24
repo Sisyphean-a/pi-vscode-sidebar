@@ -1,5 +1,15 @@
 import { createExtensionUiRenderer } from "./extension-ui.ts";
 import type { HostToUiMessage } from "../protocol.ts";
+import { SIDEBAR_TEMPLATE } from "./template.ts";
+import {
+  asRecord,
+  escapeHtml,
+  formatEventMessage,
+  mapStatusLabel,
+  readString,
+  stringifyJson,
+  truncateText,
+} from "./ui-text.ts";
 
 declare function acquireVsCodeApi<T>(): {
   postMessage(message: T): void;
@@ -12,61 +22,7 @@ if (!root) {
   throw new Error("Missing #app root element.");
 }
 
-root.innerHTML = `
-  <main class="shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">PI SIDEBAR</p>
-        <h1 id="title">Ready</h1>
-      </div>
-      <span id="status-badge" class="badge">idle</span>
-    </header>
-    <section class="controls card">
-      <div class="line">
-        <button id="new-session-button" type="button">New Session</button>
-        <button id="abort-button" type="button">Stop</button>
-        <button id="reconnect-button" class="hidden" type="button">Reconnect</button>
-      </div>
-      <div class="line">
-        <input id="model-provider-input" placeholder="provider" />
-        <input id="model-id-input" placeholder="model id" />
-        <button id="set-model-button" type="button">Set Model</button>
-      </div>
-      <div class="line">
-        <select id="thinking-level-select">
-          <option value="off">off</option>
-          <option value="minimal">minimal</option>
-          <option value="low">low</option>
-          <option value="medium" selected>medium</option>
-          <option value="high">high</option>
-          <option value="xhigh">xhigh</option>
-        </select>
-        <button id="set-thinking-button" type="button">Set Thinking</button>
-        <input id="session-switch-input" placeholder="session path" />
-        <button id="switch-session-button" type="button">Switch</button>
-      </div>
-      <div class="line">
-        <input id="session-name-input" placeholder="session name" />
-        <button id="set-session-name-button" type="button">Set Name</button>
-        <input id="export-path-input" placeholder="export path (optional)" />
-        <button id="export-html-button" type="button">Export HTML</button>
-      </div>
-      <div class="line">
-        <button id="load-models-button" type="button">Load Models</button>
-        <button id="session-stats-button" type="button">Session Stats</button>
-      </div>
-    </section>
-    <section id="extension-ui-panel" class="card hidden"></section>
-    <section class="feed">
-      <article id="system-message" class="card"><p>Pi Sidebar is booting...</p></article>
-      <div id="event-feed" class="event-feed"></div>
-    </section>
-    <footer class="composer">
-      <textarea id="prompt-input" rows="3" placeholder="Type your prompt..."></textarea>
-      <button id="send-button" type="button">Send</button>
-    </footer>
-  </main>
-`;
+root.innerHTML = SIDEBAR_TEMPLATE;
 
 const statusBadge = expectElement<HTMLSpanElement>("status-badge");
 const title = expectElement<HTMLElement>("title");
@@ -76,6 +32,7 @@ const sendButton = expectElement<HTMLButtonElement>("send-button");
 const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const abortButton = expectElement<HTMLButtonElement>("abort-button");
 const reconnectButton = expectElement<HTMLButtonElement>("reconnect-button");
+const toggleControlButton = expectElement<HTMLButtonElement>("toggle-control-button");
 const modelProviderInput = expectElement<HTMLInputElement>("model-provider-input");
 const modelIdInput = expectElement<HTMLInputElement>("model-id-input");
 const setModelButton = expectElement<HTMLButtonElement>("set-model-button");
@@ -90,6 +47,7 @@ const exportHtmlButton = expectElement<HTMLButtonElement>("export-html-button");
 const loadModelsButton = expectElement<HTMLButtonElement>("load-models-button");
 const sessionStatsButton = expectElement<HTMLButtonElement>("session-stats-button");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
+const controlPanel = expectElement<HTMLElement>("control-panel");
 const eventFeed = expectElement<HTMLElement>("event-feed");
 const EVENT_FLUSH_INTERVAL_MS = 24;
 const MAX_EVENT_TEXT_PREVIEW = 220;
@@ -118,10 +76,12 @@ const renderExtensionUiRequest = createExtensionUiRenderer({
 });
 
 sendButton.addEventListener("click", () => {
-  const text = promptInput.value.trim();
-  if (!text) return;
-  postUiMessage({ type: "send_prompt", text });
-  promptInput.value = "";
+  sendPrompt();
+});
+promptInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  event.preventDefault();
+  sendPrompt();
 });
 newSessionButton.addEventListener("click", () => {
   postUiMessage({ type: "new_session" });
@@ -132,15 +92,29 @@ abortButton.addEventListener("click", () => {
 reconnectButton.addEventListener("click", () => {
   postUiMessage({ type: "new_session" });
 });
+toggleControlButton.addEventListener("click", () => {
+  controlPanel.classList.toggle("hidden");
+  const expanded = !controlPanel.classList.contains("hidden");
+  toggleControlButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+});
 setModelButton.addEventListener("click", () => {
-  const provider = modelProviderInput.value.trim();
-  const modelId = modelIdInput.value.trim();
-  if (!provider || !modelId) return;
-  postUiMessage({ type: "set_model", provider, modelId });
+  applyModelSetting();
+});
+modelProviderInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  applyModelSetting();
+});
+modelIdInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  applyModelSetting();
 });
 setThinkingButton.addEventListener("click", () => {
-  const level = thinkingLevelSelect.value;
-  postUiMessage({ type: "set_thinking_level", level });
+  applyThinkingLevel();
+});
+thinkingLevelSelect.addEventListener("change", () => {
+  applyThinkingLevel();
 });
 switchSessionButton.addEventListener("click", () => {
   const sessionPath = switchSessionInput.value.trim();
@@ -148,9 +122,12 @@ switchSessionButton.addEventListener("click", () => {
   postUiMessage({ type: "switch_session", sessionPath });
 });
 setSessionNameButton.addEventListener("click", () => {
-  const name = sessionNameInput.value.trim();
-  if (!name) return;
-  postUiMessage({ type: "set_session_name", name });
+  applySessionName();
+});
+sessionNameInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  applySessionName();
 });
 exportHtmlButton.addEventListener("click", () => {
   const outputPath = exportPathInput.value.trim();
@@ -198,7 +175,7 @@ function expectElement<TElement extends HTMLElement>(id: string): TElement {
 }
 
 function renderSystemNotice(text: string): void {
-  updateStatusBadge("connected", "connected");
+  updateStatusBadge("connected", "已连接");
   systemMessage.innerHTML = `<p>${escapeHtml(text)}</p>`;
 }
 
@@ -210,11 +187,11 @@ function updateState(data: Record<string, unknown>): void {
   if (phase === "process_dead") reconnectButton.classList.remove("hidden");
   else reconnectButton.classList.add("hidden");
   const sessionName = readString(asRecord(rpc)?.sessionName);
-  title.textContent = sessionName ? `Ready · ${sessionName}` : "Ready";
+  title.textContent = sessionName ? `就绪 · ${sessionName}` : "就绪";
 }
 
 function updateStatusBadge(statusKey: string, statusText?: string): void {
-  statusBadge.textContent = statusText?.trim() ? statusText : statusKey;
+  statusBadge.textContent = statusText?.trim() ? statusText : mapStatusLabel(statusKey);
   statusBadge.dataset.statusKey = statusKey;
 }
 
@@ -241,13 +218,13 @@ function flushEventQueue(): void {
 
 function createEventCard(kind: "event" | "error", text: string, raw?: unknown): HTMLElement {
   const article = document.createElement("article");
-  article.className = `card ${kind === "error" ? "error-card" : "event-card"}`;
+  article.className = `message-card ${kind === "error" ? "error-card" : "event-card"}`;
   article.innerHTML = `<p>${escapeHtml(truncateText(text, MAX_EVENT_TEXT_PREVIEW))}</p>`;
 
   if (raw !== undefined) {
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = "查看原始 JSON";
+    summary.textContent = "查看原始数据";
     const pre = document.createElement("pre");
     pre.textContent = stringifyJson(raw);
     details.append(summary, pre);
@@ -257,64 +234,29 @@ function createEventCard(kind: "event" | "error", text: string, raw?: unknown): 
   return article;
 }
 
-function formatEventMessage(data: unknown): string {
-  const event = asRecord(data);
-  const type = readString(event?.type);
-  if (!type) return JSON.stringify(data);
-
-  if (type === "query_result") {
-    const command = readString(event?.command) ?? "unknown";
-    return `Query result received: ${command}`;
-  }
-
-  const toolName = readString(event?.toolName) ?? readString(event?.tool_name);
-  if (type === "tool_execution_start") {
-    return `Tool started: ${toolName ?? "unknown"}`;
-  }
-  if (type === "tool_execution_update") {
-    return `Tool update: ${toolName ?? "unknown"}`;
-  }
-  if (type === "tool_execution_end") {
-    return `Tool finished: ${toolName ?? "unknown"}`;
-  }
-  if (type === "message_update") {
-    const text = readString(event?.text);
-    return text ? `Assistant: ${text.slice(0, 160)}` : "Assistant message update";
-  }
-  if (type === "agent_start") return "Agent started";
-  if (type === "agent_end") return "Agent finished";
-  return `Event: ${type}`;
+function sendPrompt(): void {
+  const text = promptInput.value.trim();
+  if (!text) return;
+  postUiMessage({ type: "send_prompt", text });
+  promptInput.value = "";
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  return value as Record<string, unknown>;
+function applyModelSetting(): void {
+  const provider = modelProviderInput.value.trim();
+  const modelId = modelIdInput.value.trim();
+  if (!provider || !modelId) return;
+  postUiMessage({ type: "set_model", provider, modelId });
 }
 
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
+function applyThinkingLevel(): void {
+  const level = thinkingLevelSelect.value;
+  postUiMessage({ type: "set_thinking_level", level });
 }
 
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength)}...`;
-}
-
-function stringifyJson(value: unknown): string {
-  try {
-    return JSON.stringify(value, null, 2) ?? String(value);
-  } catch {
-    return String(value);
-  }
+function applySessionName(): void {
+  const name = sessionNameInput.value.trim();
+  if (!name) return;
+  postUiMessage({ type: "set_session_name", name });
 }
 
 function postUiMessage(message: Record<string, unknown>): void {

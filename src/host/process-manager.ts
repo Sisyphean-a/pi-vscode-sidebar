@@ -22,7 +22,7 @@ export interface PendingRequestStore {
 }
 
 export interface StartProcessOptions {
-  piPath: string;
+  executable: string;
   args: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -149,7 +149,7 @@ class NodePiRpcProcessManager implements PiRpcProcessManager {
 
   async start(options: StartProcessOptions): Promise<void> {
     if (this.child) return;
-    const child = spawn(options.piPath, options.args, {
+    const child = spawn(options.executable, options.args, {
       cwd: options.cwd,
       env: options.env,
       stdio: ["pipe", "pipe", "pipe"],

@@ -60,7 +60,7 @@ describe("createPiRpcProcessManager", () => {
 
     await expect(
       manager.start({
-        piPath: missingPath,
+        executable: missingPath,
         args: ["--mode", "rpc"],
       }),
     ).rejects.toThrowError();

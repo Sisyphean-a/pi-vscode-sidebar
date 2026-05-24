@@ -2,6 +2,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { createBridgeEnvironment, type BridgeEnvironmentConfig } from "./env.ts";
 import { resolvePiBinary } from "./resolve.ts";
+export { resolvePiRuntime, type ResolvedPiRuntime } from "./resolve.ts";
 
 const BRIDGE_EXTENSION_PATH = "bridge/pi-vscode-bridge.js";
 

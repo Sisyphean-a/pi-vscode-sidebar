@@ -15,7 +15,7 @@ describe("extension ui renderer", () => {
 
     expect(harness.panel.classList.contains("hidden")).toBe(false);
     expect(harness.panel.textContent).toContain("Bridge disconnected");
-    expect(harness.notices).toEqual(["[warning] Bridge disconnected"]);
+    expect(harness.notices).toEqual(["[警告] Bridge disconnected"]);
     expect(harness.responses).toEqual([]);
   });
 

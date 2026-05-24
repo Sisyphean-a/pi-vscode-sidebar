@@ -1,8 +1,8 @@
 {
   "name": "pi-vscode-sidebar",
-  "displayName": "Pi Sidebar",
+  "displayName": "Pi 侧边栏",
   "version": "0.0.1",
-  "description": "VS Code sidebar extension for Pi coding agent",
+  "description": "Pi 编码助手的 VS Code 侧边栏扩展",
   "license": "MIT",
   "publisher": "local",
   "repository": {
@@ -39,14 +39,14 @@
     "commands": [
       {
         "command": "piSidebar.focus",
-        "title": "Pi Sidebar: Focus Sidebar"
+        "title": "Pi 侧边栏：聚焦对话面板"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "piSidebar",
-          "title": "Pi",
+          "title": "助手",
           "icon": "assets/logo.svg"
         }
       ]
@@ -56,32 +56,32 @@
         {
           "type": "webview",
           "id": "piSidebar.main",
-          "name": "Chat"
+          "name": "对话"
         }
       ]
     },
     "configuration": {
-      "title": "Pi Sidebar",
+      "title": "Pi 侧边栏",
       "properties": {
         "piSidebar.path": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to the pi binary. Leave empty for auto-detection."
+          "description": "Pi 可执行文件绝对路径。留空时自动探测。"
         },
         "piSidebar.rpcTimeoutMs": {
           "type": "number",
           "default": 30000,
-          "description": "RPC request timeout in milliseconds."
+          "description": "RPC 请求超时时间（毫秒）。"
         },
         "piSidebar.bridgeEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable VS Code bridge tools for Pi RPC sessions."
+          "description": "是否为 Pi RPC 会话启用 VS Code 桥接工具。"
         },
         "piSidebar.bridgeRequestTimeoutMs": {
           "type": "number",
           "default": 15000,
-          "description": "Bridge RPC request timeout in milliseconds."
+          "description": "桥接 RPC 请求超时时间（毫秒）。"
         },
         "piSidebar.logLevel": {
           "type": "string",
@@ -92,7 +92,7 @@
             "info",
             "debug"
           ],
-          "description": "Extension log verbosity."
+          "description": "扩展日志级别。"
         }
       }
     }
@@ -102,11 +102,11 @@
     "onCommand:piSidebar.focus"
   ],
   "engines": {
-    "vscode": "^1.110.0"
+    "vscode": "^1.108.0"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
-    "@types/vscode": "^1.110.0",
+    "@types/vscode": "^1.108.0",
     "@vscode/test-electron": "^2.5.2",
     "jsdom": "^29.1.1",
     "oxfmt": "^0.41.0",

@@ -5,7 +5,12 @@ import { createLogger, normalizeLogLevel, type Logger } from "./host/logger.ts";
 import { createPiRpcProcessManager } from "./host/process-manager.ts";
 import { createRpcClient } from "./host/rpc-client.ts";
 import { createRpcSessionStateStore } from "./host/state-store.ts";
-import { createPiRpcArgs, createPiRuntimeEnvironment, findPiBinary } from "./pi/runtime.ts";
+import {
+  createPiRpcArgs,
+  createPiRuntimeEnvironment,
+  findPiBinary,
+  resolvePiRuntime,
+} from "./pi/runtime.ts";
 import { createSessionTracker } from "./session/tracker.ts";
 import { createSidebarViewProvider } from "./view/provider.ts";
 
@@ -145,10 +150,10 @@ function createEnsureStarted(options: {
   return async () => {
     if (options.processManager.isRunning()) return;
 
-    const piPath = findPiBinary();
+    const runtime = resolvePiRuntime({ customPath: findPiBinary() });
     await options.processManager.start({
-      piPath,
-      args: createPiRpcArgs({ extensionUri: options.context.extensionUri }),
+      executable: runtime.executable,
+      args: [...runtime.args, ...createPiRpcArgs({ extensionUri: options.context.extensionUri })],
       cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
       env: createPiRuntimeEnvironment(
         options.bridge ? { url: options.bridge.url, token: options.bridge.token } : undefined,
