@@ -75,9 +75,7 @@ textarea {
 }
 
 .text-action,
-.icon-action,
-.send-action,
-.control-grid button {
+.send-action {
   border: 1px solid transparent;
   border-radius: 6px;
   min-height: 26px;
@@ -88,9 +86,7 @@ textarea {
 }
 
 .text-action:hover,
-.icon-action:hover,
-.send-action:hover,
-.control-grid button:hover {
+.send-action:hover {
   background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
 }
 
@@ -184,12 +180,6 @@ textarea {
   gap: 8px;
 }
 
-.icon-action {
-  width: 26px;
-  padding: 0;
-  justify-content: center;
-}
-
 .mode-chip {
   display: inline-flex;
   align-items: center;
@@ -216,36 +206,6 @@ textarea {
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 6px;
   padding: 3px 6px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-}
-
-.control-panel {
-  border-top: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
-  padding-top: 8px;
-}
-
-.control-grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.compact-field {
-  display: grid;
-  gap: 4px;
-}
-
-.compact-field span {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.compact-field input {
-  width: 100%;
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 6px;
-  padding: 5px 7px;
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
 }
@@ -283,10 +243,4 @@ textarea:focus-visible {
 
 .hidden {
   display: none;
-}
-
-@media (max-width: 620px) {
-  .control-grid {
-    grid-template-columns: 1fr;
-  }
 }
