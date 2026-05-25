@@ -44,6 +44,18 @@
       {
         "command": "piSidebar.focus",
         "title": "Pi 侧边栏：聚焦对话面板"
+      },
+      {
+        "command": "piSidebar.addSelectionToPrompt",
+        "title": "Pi 侧边栏：将当前选区加入输入框"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "piSidebar.addSelectionToPrompt",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "editorTextFocus && editorHasSelection"
       }
     ],
     "viewsContainers": {

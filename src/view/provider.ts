@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { buildPromptReferencePayload } from "./editor-reference.ts";
 import * as vscode from "vscode";
 import type { SidebarController } from "../host/controller.ts";
 import { parseUiMessage, type HostToUiMessage } from "./protocol.ts";
@@ -8,19 +9,26 @@ export interface CreateSidebarViewProviderOptions {
   controller: SidebarController;
 }
 
+export interface SidebarViewProviderHandle extends vscode.WebviewViewProvider {
+  insertActiveEditorReference(): Promise<void>;
+}
+
 export function createSidebarViewProvider(
   options: CreateSidebarViewProviderOptions,
-): vscode.WebviewViewProvider {
+): SidebarViewProviderHandle {
   return new SidebarViewProvider(options.extensionUri, options.controller);
 }
 
-class SidebarViewProvider implements vscode.WebviewViewProvider {
+class SidebarViewProvider implements SidebarViewProviderHandle {
+  private view: vscode.WebviewView | undefined;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly controller: SidebarController,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void | Thenable<void> {
+    this.view = view;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -41,6 +49,10 @@ class SidebarViewProvider implements vscode.WebviewViewProvider {
         void vscode.window.showErrorMessage("侧边栏消息格式无效。");
         return;
       }
+      if (message.type === "open_file_reference") {
+        void this.openFileReference(message.path, message.startLine, message.endLine);
+        return;
+      }
       void this.controller.handleUiMessage(message).catch((error) => {
         const detail = error instanceof Error ? error.message : String(error);
         void this.post(view, { type: "error", scope: "rpc", message: detail });
@@ -48,8 +60,60 @@ class SidebarViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  async insertActiveEditorReference(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    const view = this.view;
+    if (!editor || !view) {
+      return;
+    }
+
+    const selection = editor.selection;
+    if (
+      selection.start.line === selection.end.line &&
+      selection.start.character === selection.end.character
+    ) {
+      return;
+    }
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const relativePath = workspaceFolder
+      ? vscode.workspace.asRelativePath(editor.document.uri, false)
+      : editor.document.uri.fsPath;
+    const payload = buildPromptReferencePayload({
+      path: relativePath,
+      start: selection.start,
+      end: selection.end,
+      selectedText: editor.document.getText(selection),
+      documentText: editor.document.getText(),
+      languageId: editor.document.languageId,
+    });
+
+    await this.post(view, {
+      type: "insert_prompt_reference",
+      data: payload,
+    });
+  }
+
   private async post(view: vscode.WebviewView, message: HostToUiMessage): Promise<void> {
     await view.webview.postMessage(message);
+  }
+
+  private async openFileReference(
+    path: string,
+    startLine: number,
+    endLine?: number,
+  ): Promise<void> {
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const targetUri = workspaceFolder
+      ? vscode.Uri.joinPath(workspaceFolder, ...path.split("/"))
+      : vscode.Uri.file(path);
+    const document = await vscode.workspace.openTextDocument(targetUri);
+    const start = new vscode.Position(Math.max(0, startLine - 1), 0);
+    const end = new vscode.Position(Math.max(0, (endLine ?? startLine) - 1), 0);
+    const selection = new vscode.Selection(start, end);
+    const editor = await vscode.window.showTextDocument(document, { preview: false });
+    editor.selection = selection;
+    editor.revealRange(new vscode.Range(start, end));
   }
 
   private renderHtml(webview: vscode.Webview): string {

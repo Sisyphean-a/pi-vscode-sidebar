@@ -16,6 +16,22 @@ describe("parseUiMessage", () => {
     });
   });
 
+  it("accepts open_file_reference payload", () => {
+    const parsed = parseUiMessage({
+      type: "open_file_reference",
+      path: "src/pi/env.ts",
+      startLine: 11,
+      endLine: 23,
+    });
+
+    expect(parsed).toEqual({
+      type: "open_file_reference",
+      path: "src/pi/env.ts",
+      startLine: 11,
+      endLine: 23,
+    });
+  });
+
   it("rejects malformed payloads", () => {
     expect(parseUiMessage({})).toBeUndefined();
     expect(parseUiMessage({ type: "send_prompt" })).toBeUndefined();

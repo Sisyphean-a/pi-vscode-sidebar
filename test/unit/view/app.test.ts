@@ -673,6 +673,156 @@ describe("sidebar webview app", () => {
     expect(clipboardWrites).toContain("const value = 1;");
   });
 
+  it("renders markdown separators, headings and list items", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_end",
+            message: {
+              role: "assistant",
+              responseId: "resp-md-2",
+              content: [
+                {
+                  type: "text",
+                  text: "---\n\n### 1) Home 页面层级（组件树）\n\n- 路由\n  - `views/home/index.vue`",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const assistantBubble = document.querySelector(
+      "#message-feed .chat-message.role-assistant",
+    ) as HTMLElement | null;
+
+    expect(assistantBubble?.querySelector("hr")).not.toBeNull();
+    expect(assistantBubble?.querySelector("h3")?.textContent).toContain("Home 页面层级");
+    expect(assistantBubble?.querySelectorAll("li").length).toBeGreaterThanOrEqual(2);
+    expect(assistantBubble?.textContent).toContain("views/home/index.vue");
+  });
+
+  it("renders file reference tokens as clickable chips and posts open request", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_end",
+            message: {
+              role: "assistant",
+              responseId: "resp-ref-1",
+              content: [
+                {
+                  type: "text",
+                  text: "@src/pi/env.ts:11-23",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const refButton = document.querySelector(".file-reference-chip") as HTMLButtonElement | null;
+    expect(refButton?.textContent).toContain("env.ts");
+    expect(refButton?.textContent).toContain("src/pi/env.ts:11-23");
+
+    refButton?.click();
+    await waitForFlush();
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string; path?: string; startLine?: number; endLine?: number })
+            .type === "open_file_reference" &&
+          (message as { path?: string }).path === "src/pi/env.ts" &&
+          (message as { startLine?: number }).startLine === 11 &&
+          (message as { endLine?: number }).endLine === 23,
+      ),
+    ).toBe(true);
+  });
+
+  it("inserts prompt reference tokens into the composer and expands them on send", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.focus();
+    prompt.value = "请分析这段代码：";
+    prompt.selectionStart = prompt.value.length;
+    prompt.selectionEnd = prompt.value.length;
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "insert_prompt_reference",
+          data: {
+            reference: "@src/pi/env.ts:11-23",
+            path: "src/pi/env.ts",
+            startLine: 11,
+            endLine: 23,
+            content: "export const PI = 3.14;\n",
+            language: "typescript",
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    expect(prompt.value).toContain("@src/pi/env.ts:11-23");
+
+    (document.getElementById("send-button") as HTMLButtonElement).click();
+    await waitForFlush();
+
+    const sendPromptMessage = postedMessages.find(
+      (message) =>
+        typeof message === "object" &&
+        !!message &&
+        (message as { type?: string }).type === "send_prompt",
+    ) as { text?: string } | undefined;
+
+    expect(sendPromptMessage?.text).toContain("@src/pi/env.ts:11-23");
+    expect(sendPromptMessage?.text).toContain("```typescript");
+    expect(sendPromptMessage?.text).toContain("export const PI = 3.14;");
+  });
+
   it("replays completed thinking from get_messages query results", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }

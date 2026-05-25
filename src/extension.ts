@@ -57,6 +57,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("piSidebar.focus", async () => {
       await vscode.commands.executeCommand("workbench.view.extension.piSidebar");
     }),
+    vscode.commands.registerCommand("piSidebar.addSelectionToPrompt", async () => {
+      await vscode.commands.executeCommand("workbench.view.extension.piSidebar");
+      await provider.insertActiveEditorReference();
+    }),
     {
       dispose: () => {
         void controller.dispose();

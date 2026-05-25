@@ -28,6 +28,15 @@ interface AvailableModel {
   reasoning?: boolean;
 }
 
+interface PromptReferenceState {
+  path: string;
+  startLine: number;
+  endLine?: number;
+  content: string;
+  language: string;
+  reference: string;
+}
+
 const vscode = acquireVsCodeApi<object>();
 const root = document.getElementById("app");
 
@@ -80,6 +89,7 @@ let pendingThinkingLevel = "";
 let suppressModelSelectChange = false;
 let isStreamingPhase = false;
 let shouldAutoScroll = true;
+const promptReferences = new Map<string, PromptReferenceState>();
 
 resetComposerHeight(promptInput);
 
@@ -118,6 +128,9 @@ sendButton.addEventListener("click", () => {
 });
 promptInput.addEventListener("input", () => {
   syncComposerHeight(promptInput);
+});
+messageFeed.addEventListener("click", (event) => {
+  handleMessageFeedClick(event);
 });
 messageFeed.addEventListener("scroll", () => {
   handleMessageFeedScroll();
@@ -187,6 +200,10 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   if (message.type === "event") {
     resolveBootingNotice("idle");
     applyAgentEvent(message.data);
+    return;
+  }
+  if (message.type === "insert_prompt_reference") {
+    insertPromptReference(message.data);
     return;
   }
   if (message.type === "state") {
@@ -1059,7 +1076,7 @@ function sendPrompt(): void {
   const text = promptInput.value.trim();
   if (!text) return;
   appendTransientMessage("user", text);
-  postUiMessage({ type: "send_prompt", text });
+  postUiMessage({ type: "send_prompt", text: expandPromptReferences(text) });
   promptInput.value = "";
   resetComposerHeight(promptInput);
 }
@@ -1106,9 +1123,82 @@ function updateConnectionTitle(statusKey: string, statusText?: string): void {
   title.textContent = statusKey === "process_dead" ? "未连接Pi" : "已连接";
 }
 
+function insertPromptReference(payload: unknown): void {
+  const data = asRecord(payload);
+  const reference = readString(data?.reference);
+  const path = readString(data?.path);
+  const content = readString(data?.content);
+  const language = readString(data?.language) ?? "";
+  const startLine = readInteger(data?.startLine);
+  const endLine = readOptionalInteger(data?.endLine);
+  if (!reference || !path || !content || startLine === undefined) {
+    return;
+  }
+
+  promptReferences.set(reference, {
+    path,
+    startLine,
+    endLine,
+    content,
+    language,
+    reference,
+  });
+  insertTextAtSelection(`${reference}\n`);
+}
+
+function insertTextAtSelection(text: string): void {
+  const start = promptInput.selectionStart ?? promptInput.value.length;
+  const end = promptInput.selectionEnd ?? promptInput.value.length;
+  promptInput.value = `${promptInput.value.slice(0, start)}${text}${promptInput.value.slice(end)}`;
+  const nextCursor = start + text.length;
+  promptInput.selectionStart = nextCursor;
+  promptInput.selectionEnd = nextCursor;
+  syncComposerHeight(promptInput);
+}
+
+function expandPromptReferences(text: string): string {
+  let expanded = text;
+  for (const reference of promptReferences.values()) {
+    if (!expanded.includes(reference.reference)) {
+      continue;
+    }
+    expanded = expanded.replace(
+      reference.reference,
+      `${reference.reference}\n\`\`\`${reference.language}\n${reference.content}\n\`\`\``,
+    );
+  }
+  return expanded;
+}
+
 function handleMessageFeedScroll(): void {
   shouldAutoScroll = isNearBottom();
   updateScrollToBottomButton();
+}
+
+function handleMessageFeedClick(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const reference = target.closest(".file-reference-chip");
+  if (!(reference instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const path = reference.dataset.path;
+  const startLine = Number(reference.dataset.startLine);
+  const endLine = reference.dataset.endLine ? Number(reference.dataset.endLine) : undefined;
+  if (!path || !Number.isFinite(startLine)) {
+    return;
+  }
+
+  postUiMessage({
+    type: "open_file_reference",
+    path,
+    startLine,
+    endLine,
+  });
 }
 
 function updateScrollToBottomButton(): void {
@@ -1117,6 +1207,17 @@ function updateScrollToBottomButton(): void {
 
 function isNearBottom(): boolean {
   return messageFeed.scrollHeight - messageFeed.scrollTop - messageFeed.clientHeight <= 16;
+}
+
+function readInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function readOptionalInteger(value: unknown): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return readInteger(value);
 }
 
 function nextLocalMessageKey(prefix: string): string {

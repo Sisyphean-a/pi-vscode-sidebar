@@ -7,6 +7,7 @@ export interface UiImageInput {
 type UiToHostMessagePayload =
   | { type: "ui_ready" }
   | { type: "send_prompt"; text: string; images?: UiImageInput[] }
+  | { type: "open_file_reference"; path: string; startLine: number; endLine?: number }
   | { type: "abort" }
   | { type: "new_session" }
   | { type: "switch_session"; sessionPath: string }
@@ -23,6 +24,7 @@ export type UiToHostMessage = UiToHostMessagePayload & { correlationId?: string 
 export type HostToUiMessage =
   | { type: "state"; data: unknown }
   | { type: "event"; data: unknown }
+  | { type: "insert_prompt_reference"; data: unknown }
   | { type: "extension_ui_request"; data: unknown }
   | { type: "error"; scope: "rpc" | "bridge" | "ui"; message: string }
   | { type: "notice"; message: string };
@@ -41,6 +43,8 @@ export function parseUiMessage(input: unknown): UiToHostMessage | undefined {
       return withCorrelation({ type }, message);
     case "send_prompt":
       return withOptionalCorrelation(parseSendPrompt(message), message);
+    case "open_file_reference":
+      return withOptionalCorrelation(parseOpenFileReference(message), message);
     case "switch_session":
       return withOptionalCorrelation(parseSwitchSession(message), message);
     case "set_session_name":
@@ -85,6 +89,18 @@ function parseSwitchSession(message: Record<string, unknown>): UiToHostMessagePa
   const sessionPath = readString(message.sessionPath);
   if (!sessionPath) return undefined;
   return { type: "switch_session", sessionPath };
+}
+
+function parseOpenFileReference(
+  message: Record<string, unknown>,
+): UiToHostMessagePayload | undefined {
+  const path = readString(message.path);
+  const startLine = readNumber(message.startLine);
+  const endLine = readOptionalNumber(message.endLine);
+  if (!path || startLine === undefined) return undefined;
+  return endLine === undefined
+    ? { type: "open_file_reference", path, startLine }
+    : { type: "open_file_reference", path, startLine, endLine };
 }
 
 function parseSetModel(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
@@ -139,6 +155,15 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  return readNumber(value);
 }
 
 function withOptionalCorrelation<TMessage extends UiToHostMessagePayload>(
