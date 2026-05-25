@@ -57,7 +57,7 @@ class SidebarControllerImpl implements SidebarController {
 
     switch (message.type) {
       case "ui_ready":
-        await this.syncState();
+        await this.onUiReady(message.correlationId);
         return;
       case "send_prompt":
         await this.onSendPrompt(message.text, message.images, message.correlationId);
@@ -154,6 +154,15 @@ class SidebarControllerImpl implements SidebarController {
     const response = await this.options.rpcClient.send(withCommandId(command, correlationId));
     this.reportCommandFailure(response, correlationId);
     await this.syncState();
+    if (command.type === "new_session" || command.type === "switch_session") {
+      await this.replayMessages(correlationId, true);
+    }
+  }
+
+  private async onUiReady(correlationId: string | undefined): Promise<void> {
+    await this.options.ensureStarted();
+    await this.syncState();
+    await this.replayMessages(correlationId, true);
   }
 
   private async onRpcQuery(command: RpcCommand, correlationId: string | undefined): Promise<void> {
@@ -166,6 +175,27 @@ class SidebarControllerImpl implements SidebarController {
       data: { type: "query_result", command: command.type, data: response.data, correlationId },
     });
     await this.syncState();
+  }
+
+  private async replayMessages(correlationId: string | undefined, replace: boolean): Promise<void> {
+    const response = await this.options.rpcClient.send(
+      withCommandId({ type: "get_messages" }, correlationId),
+    );
+    if (!response.success) {
+      if (isUnsupportedGetMessagesError(response.error)) return;
+      this.reportCommandFailure(response, correlationId);
+      return;
+    }
+    this.emit({
+      type: "event",
+      data: {
+        type: "query_result",
+        command: "get_messages",
+        data: response.data,
+        correlationId,
+        replace,
+      },
+    });
   }
 
   private async onExtensionUiResponse(requestId: string, payload: unknown): Promise<void> {
@@ -328,4 +358,14 @@ function normalizeTimeoutMs(timeoutMs: number | undefined): number {
 function withCommandId(command: RpcCommand, correlationId: string | undefined): RpcCommand {
   if (!correlationId || command.id) return command;
   return { ...command, id: correlationId };
+}
+
+function isUnsupportedGetMessagesError(error: string | undefined): boolean {
+  if (!error) return false;
+  const normalized = error.toLowerCase();
+  return (
+    normalized.includes("unknown rpc command") ||
+    normalized.includes("unknown command") ||
+    normalized.includes("unsupported")
+  );
 }

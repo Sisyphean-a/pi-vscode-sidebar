@@ -16,7 +16,7 @@ export const SIDEBAR_TEMPLATE = `
       <article id="system-message" class="message-card">
         <p>侧边栏正在启动...</p>
       </article>
-      <div id="event-feed" class="event-feed"></div>
+      <div id="message-feed" class="message-feed"></div>
       <section id="extension-ui-panel" class="message-card extension-panel hidden"></section>
     </section>
 

@@ -33,19 +33,26 @@ function validateChangelog() {
 }
 
 function runRequiredChecks() {
-  runCommand("pnpm", ["verify"]);
-  runCommand("pnpm", ["run", "test:e2e"]);
-  runCommand("pnpm", ["run", "test:perf"]);
+  runNpmCommand(["run", "verify"]);
+  runNpmCommand(["run", "test:e2e"]);
+  runNpmCommand(["run", "test:perf"]);
 }
 
-function runCommand(command, args) {
-  const result = spawnSync(command, args, {
-    stdio: "inherit",
-    shell: true,
-    cwd: rootDir,
-  });
+function runNpmCommand(args) {
+  const npmExecPath = process.env.npm_execpath;
+  const result = npmExecPath
+    ? spawnSync(process.execPath, [npmExecPath, ...args], {
+        stdio: "inherit",
+        cwd: rootDir,
+      })
+    : spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", args, {
+        stdio: "inherit",
+        cwd: rootDir,
+        shell: process.platform === "win32",
+      });
+
   if (result.status !== 0) {
-    fail(`Command failed: ${command} ${args.join(" ")}`);
+    fail(`Command failed: npm ${args.join(" ")}`);
   }
 }
 

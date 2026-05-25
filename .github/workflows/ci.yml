@@ -14,28 +14,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.32.1
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          cache: npm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Verify (unit + lint + typecheck)
-        run: pnpm verify
+        run: npm run verify
 
       - name: Run E2E
-        run: pnpm run test:e2e
+        run: npm run test:e2e
 
       - name: Run performance gates
-        run: pnpm run test:perf
+        run: npm run test:perf
 
       - name: Build extension bundle
-        run: pnpm build
+        run: npm run build

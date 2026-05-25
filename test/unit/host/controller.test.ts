@@ -10,6 +10,7 @@ function createHarness(options?: {
   let listener: ((event: ProcessEvent) => void) | undefined;
   const sentCommands: unknown[] = [];
   const sentUiResponses: unknown[] = [];
+  let ensureStartedCalls = 0;
   let phase = options?.phase ?? "idle";
 
   const controller = createSidebarController({
@@ -70,7 +71,9 @@ function createHarness(options?: {
         return { phase, updatedAt: Date.now(), lastError: error };
       },
     },
-    async ensureStarted() {},
+    async ensureStarted() {
+      ensureStartedCalls += 1;
+    },
     extensionUiTimeoutMs: options?.extensionUiTimeoutMs,
   });
 
@@ -83,6 +86,9 @@ function createHarness(options?: {
     emitted,
     sentCommands,
     sentUiResponses,
+    getEnsureStartedCalls() {
+      return ensureStartedCalls;
+    },
     emitProcessEvent(event: ProcessEvent) {
       listener?.(event);
     },
@@ -152,6 +158,49 @@ describe("SidebarController", () => {
       type: "get_available_models",
       id: "ui-correlation-1",
     });
+  });
+
+  it("starts runtime and replays session messages when ui becomes ready", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "ui_ready",
+      correlationId: "ui-ready-1",
+    });
+
+    expect(harness.getEnsureStartedCalls()).toBe(1);
+    expect(harness.sentCommands).toContainEqual({ type: "get_messages", id: "ui-ready-1" });
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          !!item &&
+          (item as { type?: string }).type === "event" &&
+          (item as { data?: { type?: string; command?: string; replace?: boolean } }).data?.type ===
+            "query_result" &&
+          (item as { data?: { type?: string; command?: string; replace?: boolean } }).data
+            ?.command === "get_messages" &&
+          (item as { data?: { type?: string; command?: string; replace?: boolean } }).data
+            ?.replace === true,
+      ),
+    ).toBe(true);
+  });
+
+  it("replays session messages after switch_session command", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "switch_session",
+      sessionPath: "C:\\sessions\\session-1.json",
+      correlationId: "switch-1",
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "switch_session",
+      sessionPath: "C:\\sessions\\session-1.json",
+      id: "switch-1",
+    });
+    expect(harness.sentCommands).toContainEqual({ type: "get_messages", id: "switch-1" });
   });
 
   it("forwards rpc stderr events as visible errors", async () => {

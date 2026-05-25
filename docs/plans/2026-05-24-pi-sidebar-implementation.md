@@ -30,7 +30,7 @@ Add a protocol test that rejects malformed UI messages and accepts valid `send_p
 
 **Step 2: Run test to verify it fails**
 
-Run: `pnpm vitest run test/unit/view/protocol.test.ts`
+Run: `npm exec -- vitest run test/unit/view/protocol.test.ts`
 Expected: FAIL because protocol helpers do not exist yet.
 
 **Step 3: Write minimal implementation**
@@ -39,7 +39,7 @@ Create the extension scaffold, webview provider, typed protocol helpers, and a s
 
 **Step 4: Run test to verify it passes**
 
-Run: `pnpm vitest run test/unit/view/protocol.test.ts`
+Run: `npm exec -- vitest run test/unit/view/protocol.test.ts`
 Expected: PASS
 
 ### Task 2: Add host controller, RPC transport, and state model
@@ -63,7 +63,7 @@ Cover JSONL frame parsing, request timeout handling, and the `idle -> streaming 
 
 **Step 2: Run tests to verify they fail**
 
-Run: `pnpm vitest run test/unit/host/process-manager.test.ts test/unit/host/state-store.test.ts`
+Run: `npm exec -- vitest run test/unit/host/process-manager.test.ts test/unit/host/state-store.test.ts`
 Expected: FAIL because the host modules do not exist yet.
 
 **Step 3: Write minimal implementation**
@@ -72,7 +72,7 @@ Implement typed RPC command/response handling, Pi process lifecycle, and host-ow
 
 **Step 4: Run tests to verify they pass**
 
-Run: `pnpm vitest run test/unit/host/process-manager.test.ts test/unit/host/state-store.test.ts`
+Run: `npm exec -- vitest run test/unit/host/process-manager.test.ts test/unit/host/state-store.test.ts`
 Expected: PASS
 
 ### Task 3: Reuse VS Code bridge and session persistence
@@ -95,7 +95,7 @@ Add tests for request authorization, payload limit enforcement, and persisted se
 
 **Step 2: Run tests to verify they fail**
 
-Run: `pnpm vitest run test/unit/bridge/server.test.ts test/unit/session/tracker.test.ts`
+Run: `npm exec -- vitest run test/unit/bridge/server.test.ts test/unit/session/tracker.test.ts`
 Expected: FAIL because bridge and tracker modules do not exist yet.
 
 **Step 3: Write minimal implementation**
@@ -104,7 +104,7 @@ Port the bridge server and core handlers from `pi-vscode`, adapt naming to this 
 
 **Step 4: Run tests to verify they pass**
 
-Run: `pnpm vitest run test/unit/bridge/server.test.ts test/unit/session/tracker.test.ts`
+Run: `npm exec -- vitest run test/unit/bridge/server.test.ts test/unit/session/tracker.test.ts`
 Expected: PASS
 
 ### Task 4: Complete sidebar UX and extension UI request loop
@@ -123,7 +123,7 @@ Add a provider test that verifies extension UI requests are forwarded to the web
 
 **Step 2: Run test to verify it fails**
 
-Run: `pnpm vitest run test/unit/view/provider.test.ts`
+Run: `npm exec -- vitest run test/unit/view/provider.test.ts`
 Expected: FAIL because the provider does not support extension UI loops yet.
 
 **Step 3: Write minimal implementation**
@@ -132,7 +132,7 @@ Render messages, tool cards, state banner, input box, session controls, and the 
 
 **Step 4: Run test to verify it passes**
 
-Run: `pnpm vitest run test/unit/view/provider.test.ts`
+Run: `npm exec -- vitest run test/unit/view/provider.test.ts`
 Expected: PASS
 
 ### Task 5: Run integration checks and project verification
@@ -147,7 +147,7 @@ Simulate `start -> prompt -> event stream -> tool event -> completion -> session
 
 **Step 2: Run test to verify it fails**
 
-Run: `pnpm vitest run test/integration/sidebar-controller.test.ts`
+Run: `npm exec -- vitest run test/integration/sidebar-controller.test.ts`
 Expected: FAIL because the end-to-end flow is not wired yet.
 
 **Step 3: Write minimal implementation**
@@ -156,7 +156,7 @@ Finish any missing controller glue, document the extension usage, and align the 
 
 **Step 4: Run verification**
 
-Run: `pnpm vitest run`
-Run: `pnpm lint`
-Run: `pnpm typecheck`
+Run: `npm exec -- vitest run`
+Run: `npm run lint`
+Run: `npm run typecheck`
 Expected: PASS across all commands

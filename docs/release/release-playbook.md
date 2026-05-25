@@ -2,13 +2,13 @@
 
 ## 1. 发布前检查
 
-1. 本地执行 `pnpm run release:check` 必须通过。
+1. 本地执行 `npm run release:check` 必须通过。
 2. `CHANGELOG.md` 必须包含当前 `package.json` 版本的条目。
 3. `docs/quality-gates/perfection-gates.md` 中发布相关门禁需为 `PASS`。
 
 ## 2. 打包步骤
 
-1. 执行 `pnpm run package:vsix`。
+1. 执行 `npm run package:vsix`。
 2. 产物路径：`dist/pi-vscode-sidebar-<version>.vsix`。
 3. 记录产物 hash（SHA256）到发布记录。
 

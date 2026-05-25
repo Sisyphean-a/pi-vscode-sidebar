@@ -119,20 +119,79 @@ textarea {
   margin: 0;
 }
 
-.event-feed {
+.message-feed {
   min-height: 0;
   overflow: auto;
-  display: grid;
-  align-content: start;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding-right: 2px;
 }
 
-.event-card {
-  border-left: 2px solid var(--vscode-textLink-foreground);
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 92%;
 }
 
-.error-card {
-  border-left: 2px solid var(--vscode-errorForeground);
+.chat-message.role-user {
+  align-self: flex-end;
+}
+
+.chat-message.role-assistant,
+.chat-message.role-tool,
+.chat-message.role-error {
+  align-self: flex-start;
+}
+
+.chat-role {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.chat-content {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
+  border-radius: 10px;
+  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
+  background: var(--vscode-editor-background);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-message.role-user .chat-content {
+  border-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.chat-message.role-assistant .chat-content {
+  border-color: var(--vscode-panel-border, var(--vscode-sideBar-border));
+  background: var(--vscode-editor-background);
+}
+
+.chat-message.role-tool .chat-content {
+  border-style: dashed;
+  border-color: var(--vscode-textLink-foreground);
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+}
+
+.chat-tool-details {
+  margin-top: 2px;
+}
+
+.chat-tool-details summary {
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.chat-message.role-error .chat-content {
+  border-color: var(--vscode-errorForeground);
+  color: var(--vscode-errorForeground);
+  background: color-mix(in srgb, var(--vscode-errorForeground) 8%, transparent);
 }
 
 .extension-panel h2 {

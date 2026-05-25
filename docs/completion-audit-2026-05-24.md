@@ -94,11 +94,11 @@
 
 2026-05-24 执行并通过：
 
-1. `pnpm format`
-2. `pnpm lint`
-3. `pnpm typecheck`
-4. `pnpm exec vitest run`（`9` 个测试文件，`25` 个用例全部通过）
-5. `pnpm build`
+1. `npm run format`
+2. `npm run lint`
+3. `npm run typecheck`
+4. `npm exec -- vitest run`（`9` 个测试文件，`25` 个用例全部通过）
+5. `npm run build`
 
 ## 4. 结论
 

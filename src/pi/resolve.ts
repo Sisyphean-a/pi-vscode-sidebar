@@ -123,6 +123,7 @@ function windowsGlobalDirs(options: ResolvePiBinaryOptions): string[] {
   const localAppData = options.localAppData ?? process.env.LOCALAPPDATA ?? "";
   const dirs: string[] = [];
   if (appData) dirs.push(join(appData, "npm"));
+  // Keep the legacy pnpm global bin probe so the extension can still find Pi on user machines.
   if (localAppData) dirs.push(join(localAppData, "pnpm"));
   return dirs;
 }

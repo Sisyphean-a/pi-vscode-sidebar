@@ -250,8 +250,8 @@ interface PiProcessManager {
 
 每次提交前至少执行：
 
-1. `pnpm lint`
-2. `pnpm typecheck`
+1. `npm run lint`
+2. `npm run typecheck`
 
 ## 7.2 单元测试（必须）
 

@@ -11,6 +11,7 @@ export type RpcCommand =
   | { id?: string; type: "get_available_models" }
   | { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
   | { id?: string; type: "get_session_stats" }
+  | { id?: string; type: "get_messages" }
   | { id?: string; type: "export_html"; outputPath?: string }
   | { id?: string; type: "switch_session"; sessionPath: string }
   | { id?: string; type: "set_session_name"; name: string };

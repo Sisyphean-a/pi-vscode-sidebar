@@ -5,8 +5,8 @@
 - 日期：2026-05-24
 - 采样环境：
   - OS: Windows (workspace: `E:\github\pi-vscode-sidebar`)
-  - Node/PNPM: 由当前本地开发环境提供
-  - 执行命令：`pnpm exec vitest run test/perf/sidebar-stream.perf.test.ts test/perf/bridge-rpc.perf.test.ts --reporter verbose --silent false`
+  - Node/npm: 由当前本地开发环境提供
+  - 执行命令：`npm exec -- vitest run test/perf/sidebar-stream.perf.test.ts test/perf/bridge-rpc.perf.test.ts --reporter verbose --silent false`
 - 样本量：
   - Sidebar stream: 1000 events
   - Bridge RPC: 500 requests

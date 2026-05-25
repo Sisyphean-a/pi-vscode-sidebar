@@ -29,11 +29,13 @@
     "lint": "oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit test/integration",
-    "test:e2e": "pnpm build && pnpm exec tsx test/e2e/run-e2e.ts",
-    "test:perf": "pnpm exec vitest run --config vitest.perf.config.ts",
-    "package:vsix": "pnpm build && node scripts/package-vsix.mjs",
+    "pretest:e2e": "rolldown -c rolldown.config.ts",
+    "test:e2e": "tsx test/e2e/run-e2e.ts",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
+    "prepackage:vsix": "rolldown -c rolldown.config.ts",
+    "package:vsix": "node scripts/package-vsix.mjs",
     "release:check": "node scripts/release-check.mjs",
-    "verify": "pnpm test && pnpm lint && pnpm typecheck"
+    "verify": "vitest run test/unit test/integration && oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts && tsc --noEmit"
   },
   "contributes": {
     "commands": [
@@ -116,5 +118,5 @@
     "typescript": "^5.9.3",
     "vitest": "^4.0.7"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "npm@11.13.0"
 }

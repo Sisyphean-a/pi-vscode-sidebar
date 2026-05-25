@@ -1,19 +1,23 @@
 import { createExtensionUiRenderer } from "./extension-ui.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
-import {
-  asRecord,
-  escapeHtml,
-  formatEventMessage,
-  mapStatusLabel,
-  readString,
-  stringifyJson,
-  truncateText,
-} from "./ui-text.ts";
+import { asRecord, escapeHtml, mapStatusLabel, readString } from "./ui-text.ts";
 
 declare function acquireVsCodeApi<T>(): {
   postMessage(message: T): void;
 };
+
+type ChatRole = "user" | "assistant" | "tool" | "error";
+
+interface ChatMessageRefs {
+  role: ChatRole;
+  article: HTMLElement;
+  roleLabel: HTMLDivElement;
+  content: HTMLParagraphElement;
+  details?: HTMLDetailsElement;
+  detailsSummary?: HTMLElement;
+  detailsPre?: HTMLPreElement;
+}
 
 const vscode = acquireVsCodeApi<object>();
 const root = document.getElementById("app");
@@ -35,19 +39,13 @@ const abortButton = expectElement<HTMLButtonElement>("abort-button");
 const reconnectButton = expectElement<HTMLButtonElement>("reconnect-button");
 const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
-const eventFeed = expectElement<HTMLElement>("event-feed");
-const EVENT_FLUSH_INTERVAL_MS = 24;
-const MAX_EVENT_TEXT_PREVIEW = 220;
-const queuedEvents: Array<{
-  kind: "event" | "error";
-  text: string;
-  raw?: unknown;
-  streamKey?: string;
-  completeStream?: boolean;
-}> = [];
-const streamingCards = new Map<string, HTMLElement>();
-let flushTimer: number | undefined;
+const messageFeed = expectElement<HTMLElement>("message-feed");
+const messagesByKey = new Map<string, ChatMessageRefs>();
+const messageTextByKey = new Map<string, string>();
+const TOOL_COLLAPSE_MIN_LENGTH = 180;
 let bootingNoticeResolved = false;
+let localMessageSeq = 0;
+
 const renderExtensionUiRequest = createExtensionUiRenderer({
   panel: extensionUiPanel,
   escapeHtml,
@@ -66,7 +64,7 @@ const renderExtensionUiRequest = createExtensionUiRenderer({
     promptInput.focus();
   },
   queueNotice(message) {
-    queueEvent("event", message, { type: "extension_ui_notice", message });
+    appendTransientMessage("tool", message);
   },
 });
 
@@ -102,13 +100,12 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   }
   if (message.type === "error") {
     resolveBootingNotice("process_dead");
-    queueEvent("error", message.message, { scope: message.scope, message: message.message });
+    appendTransientMessage("error", message.message);
     return;
   }
   if (message.type === "event") {
     resolveBootingNotice("idle");
-    const streamMeta = resolveEventStreamMeta(message.data);
-    queueEvent("event", formatEventMessage(message.data), message.data, streamMeta);
+    applyAgentEvent(message.data);
     return;
   }
   if (message.type === "state") {
@@ -190,144 +187,311 @@ function updateStatusBadge(statusKey: string, statusText?: string): void {
   statusBadge.dataset.statusKey = statusKey;
 }
 
-function queueEvent(
-  kind: "event" | "error",
-  text: string,
-  raw?: unknown,
-  streamMeta?: { streamKey?: string; completeStream?: boolean },
-): void {
-  queuedEvents.push({
-    kind,
-    text,
-    raw,
-    streamKey: streamMeta?.streamKey,
-    completeStream: streamMeta?.completeStream,
-  });
-  scheduleEventFlush();
-}
-
-function scheduleEventFlush(): void {
-  if (flushTimer !== undefined) return;
-  flushTimer = window.setTimeout(() => {
-    flushTimer = undefined;
-    flushEventQueue();
-  }, EVENT_FLUSH_INTERVAL_MS);
-}
-
-function flushEventQueue(): void {
-  while (queuedEvents.length > 0) {
-    const next = queuedEvents.shift();
-    if (!next) continue;
-    if (next.streamKey) {
-      const existing = streamingCards.get(next.streamKey);
-      if (existing) {
-        updateEventCard(existing, next.kind, next.text, next.raw);
-      } else {
-        const created = createEventCard(next.kind, next.text, next.raw);
-        eventFeed.prepend(created);
-        streamingCards.set(next.streamKey, created);
-      }
-      if (next.completeStream) {
-        streamingCards.delete(next.streamKey);
-      }
-      continue;
-    }
-    eventFeed.prepend(createEventCard(next.kind, next.text, next.raw));
-  }
-}
-
-function createEventCard(kind: "event" | "error", text: string, raw?: unknown): HTMLElement {
-  const article = document.createElement("article");
-  article.className = `message-card ${kind === "error" ? "error-card" : "event-card"}`;
-  article.append(createCardText(text));
-
-  if (raw !== undefined) {
-    article.append(createRawDetails(raw));
-  }
-
-  return article;
-}
-
-function updateEventCard(
-  card: HTMLElement,
-  kind: "event" | "error",
-  text: string,
-  raw: unknown,
-): void {
-  card.className = `message-card ${kind === "error" ? "error-card" : "event-card"}`;
-  const textNode = card.querySelector("p");
-  if (textNode) textNode.textContent = truncateText(text, MAX_EVENT_TEXT_PREVIEW);
-  else card.prepend(createCardText(text));
-
-  if (raw === undefined) return;
-  const details = card.querySelector("details");
-  const pre = details?.querySelector("pre");
-  if (pre) pre.textContent = stringifyJson(raw);
-  else card.append(createRawDetails(raw));
-}
-
-function createCardText(text: string): HTMLElement {
-  const paragraph = document.createElement("p");
-  paragraph.textContent = truncateText(text, MAX_EVENT_TEXT_PREVIEW);
-  return paragraph;
-}
-
-function createRawDetails(raw: unknown): HTMLElement {
-  const details = document.createElement("details");
-  const summary = document.createElement("summary");
-  summary.textContent = "查看原始数据";
-  const pre = document.createElement("pre");
-  pre.textContent = stringifyJson(raw);
-  details.append(summary, pre);
-  return details;
-}
-
-function resolveEventStreamMeta(data: unknown): { streamKey?: string; completeStream?: boolean } {
+function applyAgentEvent(data: unknown): void {
   const event = asRecord(data);
   const type = readString(event?.type);
-  if (!event || !type) return {};
+  if (!event || !type) return;
 
+  if (type === "query_result") {
+    applyQueryResultEvent(event);
+    return;
+  }
+  if (type === "message_start") {
+    applyMessageStart(event);
+    return;
+  }
   if (type === "message_update") {
-    const responseId = readResponseId(event);
-    const assistantEventType = readString(asRecord(event.assistantMessageEvent)?.type);
-    if (assistantEventType === "text_start" || assistantEventType === "text_delta") {
-      return { streamKey: responseId ? `assistant:${responseId}` : "assistant:active" };
-    }
-    if (assistantEventType === "text_end") {
-      return {
-        streamKey: responseId ? `assistant:${responseId}` : "assistant:active",
-        completeStream: true,
-      };
-    }
-    if (assistantEventType?.startsWith("toolcall_")) {
-      const toolName = readToolNameFromEvent(event) ?? "tool";
-      const streamKey = responseId ? `tool:${responseId}:${toolName}` : `tool:${toolName}`;
-      return {
-        streamKey,
-        completeStream: assistantEventType === "toolcall_end",
-      };
-    }
-    return {};
+    applyMessageUpdate(event);
+    return;
   }
-
   if (type === "message_end") {
-    const message = asRecord(event.message);
-    const role = readString(message?.role);
-    if (role === "assistant") {
-      const responseId = readResponseId(event);
-      return {
-        streamKey: responseId ? `assistant:${responseId}` : "assistant:active",
-        completeStream: true,
-      };
-    }
-    if (role === "toolResult") {
-      const toolName = readString(message?.toolName) ?? "tool";
-      const streamKey = readString(message?.toolCallId) ?? `tool:${toolName}`;
-      return { streamKey, completeStream: true };
-    }
+    applyMessageEnd(event);
+    return;
+  }
+  if (
+    type === "tool_execution_start" ||
+    type === "tool_execution_update" ||
+    type === "tool_execution_end"
+  ) {
+    applyToolExecutionEvent(event, type);
+  }
+}
+
+function applyMessageStart(event: Record<string, unknown>): void {
+  const message = asRecord(event.message);
+  const role = readString(message?.role);
+  if (role === "assistant") {
+    const key = resolveAssistantStreamKey(event);
+    ensureMessage(key, "assistant");
+    return;
+  }
+  if (role === "toolResult") {
+    const key = resolveToolResultKey(event, readString(message?.toolName) ?? "tool");
+    ensureMessage(key, "tool");
+  }
+}
+
+function applyMessageUpdate(event: Record<string, unknown>): void {
+  const assistantEvent = asRecord(event.assistantMessageEvent);
+  const assistantEventType = readString(assistantEvent?.type);
+  if (assistantEventType?.startsWith("toolcall_")) {
+    const toolName = readToolNameFromEvent(event) ?? "tool";
+    const streamKey = resolveToolStreamKey(event, toolName);
+    const statusText =
+      assistantEventType === "toolcall_end"
+        ? `工具 ${toolName} 调用完成`
+        : `正在调用工具 ${toolName}`;
+    setMessageText(streamKey, "tool", statusText, "replace");
+    return;
   }
 
-  return {};
+  const assistantText = extractAssistantText(event);
+  if (assistantText) {
+    const streamKey = resolveAssistantStreamKey(event);
+    setMessageText(streamKey, "assistant", assistantText, "merge");
+    return;
+  }
+
+  if (hasThinkingContent(asRecord(assistantEvent?.partial))) {
+    const streamKey = resolveAssistantStreamKey(event);
+    setMessageText(streamKey, "assistant", "思考中...", "replace");
+  }
+}
+
+function applyMessageEnd(event: Record<string, unknown>): void {
+  const message = asRecord(event.message);
+  const role = readString(message?.role);
+  if (role === "assistant") {
+    const streamKey = resolveAssistantStreamKey(event);
+    const finalText = extractMessageText(message);
+    if (finalText) setMessageText(streamKey, "assistant", finalText, "replace");
+    return;
+  }
+  if (role === "toolResult") {
+    const toolName = readString(message?.toolName) ?? readToolNameFromEvent(event) ?? "tool";
+    const streamKey = resolveToolResultKey(event, toolName);
+    const toolText = extractMessageText(message);
+    const finalText = toolText || `工具 ${toolName} 已返回结果`;
+    setMessageText(streamKey, "tool", finalText, "replace");
+  }
+}
+
+function applyToolExecutionEvent(event: Record<string, unknown>, eventType: string): void {
+  const toolName = readString(event.toolName) ?? "tool";
+  const key = `tool-exec:${toolName}`;
+  if (eventType === "tool_execution_start") {
+    setMessageText(key, "tool", `工具 ${toolName} 开始执行`, "replace");
+    return;
+  }
+  if (eventType === "tool_execution_update") {
+    setMessageText(key, "tool", `工具 ${toolName} 执行中`, "replace");
+    return;
+  }
+  setMessageText(key, "tool", `工具 ${toolName} 执行完成`, "replace");
+}
+
+function ensureMessage(key: string, role: ChatRole): ChatMessageRefs {
+  const existing = messagesByKey.get(key);
+  if (existing) {
+    if (existing.role !== role) {
+      existing.role = role;
+      existing.article.className = `chat-message role-${role}`;
+      existing.roleLabel.textContent = roleLabel(role);
+      if (role !== "tool") removeToolDetails(existing);
+    }
+    return existing;
+  }
+
+  const article = document.createElement("article");
+  article.className = `chat-message role-${role}`;
+  const roleTag = document.createElement("div");
+  roleTag.className = "chat-role";
+  roleTag.textContent = roleLabel(role);
+  const content = document.createElement("p");
+  content.className = "chat-content";
+  article.append(roleTag, content);
+  messageFeed.append(article);
+  const created: ChatMessageRefs = { role, article, roleLabel: roleTag, content };
+  messagesByKey.set(key, created);
+  scrollToConversationBottom();
+  return created;
+}
+
+function setMessageText(
+  key: string,
+  role: ChatRole,
+  nextText: string,
+  mode: "merge" | "replace",
+): void {
+  const state = ensureMessage(key, role);
+  const currentText = messageTextByKey.get(key) ?? "";
+  const resolvedText = mode === "merge" ? mergeMessageText(currentText, nextText) : nextText;
+  if (resolvedText === currentText) return;
+  messageTextByKey.set(key, resolvedText);
+  renderMessageText(state, resolvedText);
+  scrollToConversationBottom();
+}
+
+function renderMessageText(state: ChatMessageRefs, text: string): void {
+  if (state.role === "tool" && shouldCollapseToolText(text)) {
+    state.content.textContent = summarizeToolText(text);
+    const details = ensureToolDetails(state);
+    details.pre.textContent = text;
+    return;
+  }
+
+  state.content.textContent = text;
+  removeToolDetails(state);
+}
+
+function shouldCollapseToolText(text: string): boolean {
+  if (text.length >= TOOL_COLLAPSE_MIN_LENGTH) return true;
+  const lineBreakCount = text.split("\n").length - 1;
+  return lineBreakCount >= 4;
+}
+
+function summarizeToolText(text: string): string {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const firstLine = lines[0] ?? "工具输出";
+  return firstLine.length <= 80 ? firstLine : `${firstLine.slice(0, 80)}...`;
+}
+
+function ensureToolDetails(state: ChatMessageRefs): {
+  details: HTMLDetailsElement;
+  pre: HTMLPreElement;
+} {
+  if (state.details && state.detailsPre && state.detailsSummary) {
+    return { details: state.details, pre: state.detailsPre };
+  }
+
+  const details = document.createElement("details");
+  details.className = "chat-tool-details";
+  const summary = document.createElement("summary");
+  summary.textContent = "查看工具输出";
+  const pre = document.createElement("pre");
+  details.append(summary, pre);
+  state.article.append(details);
+  state.details = details;
+  state.detailsSummary = summary;
+  state.detailsPre = pre;
+  return { details, pre };
+}
+
+function removeToolDetails(state: ChatMessageRefs): void {
+  if (!state.details) return;
+  state.details.remove();
+  state.details = undefined;
+  state.detailsSummary = undefined;
+  state.detailsPre = undefined;
+}
+
+function appendTransientMessage(role: ChatRole, text: string): void {
+  const key = nextLocalMessageKey(role);
+  setMessageText(key, role, text, "replace");
+}
+
+function mergeMessageText(previous: string, incoming: string): string {
+  if (!previous) return incoming;
+  if (!incoming) return previous;
+  if (incoming.startsWith(previous)) return incoming;
+  if (previous.startsWith(incoming)) return previous;
+  return `${previous}${incoming}`;
+}
+
+function applyQueryResultEvent(event: Record<string, unknown>): void {
+  const command = readString(event.command);
+  if (command !== "get_messages") return;
+  const replace = event.replace === true;
+  const messages = extractMessageArray(event.data);
+  if (!messages || messages.length === 0) {
+    if (replace) resetMessageFeed();
+    return;
+  }
+
+  if (replace) resetMessageFeed();
+  for (let index = 0; index < messages.length; index += 1) {
+    const item = asRecord(messages[index]);
+    if (!item) continue;
+    hydrateHistoryMessage(item, index);
+  }
+}
+
+function extractMessageArray(payload: unknown): unknown[] | undefined {
+  if (Array.isArray(payload)) return payload;
+  const record = asRecord(payload);
+  if (!record) return undefined;
+  if (Array.isArray(record.messages)) return record.messages;
+  const nestedData = asRecord(record.data);
+  if (Array.isArray(nestedData?.messages)) return nestedData.messages;
+  return undefined;
+}
+
+function hydrateHistoryMessage(message: Record<string, unknown>, index: number): void {
+  const role = readString(message.role);
+  if (role === "user") {
+    const text = extractMessageText(message);
+    if (!text) return;
+    const key = readString(message.id) ?? `history:user:${index}`;
+    setMessageText(key, "user", text, "replace");
+    return;
+  }
+  if (role === "assistant") {
+    const text = extractMessageText(message);
+    if (!text) return;
+    const key =
+      readString(message.responseId) ?? readString(message.id) ?? `history:assistant:${index}`;
+    setMessageText(key, "assistant", text, "replace");
+    return;
+  }
+  if (role === "toolResult") {
+    const toolName = readString(message.toolName);
+    const output = extractMessageText(message);
+    const text = output
+      ? toolName
+        ? `${toolName}\n${output}`
+        : output
+      : `工具 ${toolName ?? "调用"} 输出`;
+    const key = readString(message.toolCallId) ?? readString(message.id) ?? `history:tool:${index}`;
+    setMessageText(key, "tool", text, "replace");
+  }
+}
+
+function resetMessageFeed(): void {
+  messagesByKey.clear();
+  messageTextByKey.clear();
+  messageFeed.replaceChildren();
+}
+
+function roleLabel(role: ChatRole): string {
+  if (role === "user") return "你";
+  if (role === "assistant") return "Pi";
+  if (role === "tool") return "工具";
+  return "错误";
+}
+
+function resolveAssistantStreamKey(event: Record<string, unknown>): string {
+  const responseId = readResponseId(event);
+  return responseId ? `assistant:${responseId}` : "assistant:active";
+}
+
+function resolveToolStreamKey(event: Record<string, unknown>, toolName: string): string {
+  const responseId = readResponseId(event);
+  if (responseId) return `tool:${responseId}:${toolName}`;
+  const toolCallId = readToolCallIdFromEvent(event);
+  if (toolCallId) return `tool:${toolCallId}`;
+  return `tool:active:${toolName}`;
+}
+
+function resolveToolResultKey(event: Record<string, unknown>, toolName: string): string {
+  const responseId = readResponseId(event);
+  if (responseId) return `tool:${responseId}:${toolName}`;
+  const message = asRecord(event.message);
+  const toolCallId = readString(message?.toolCallId);
+  if (toolCallId) return `tool:${toolCallId}`;
+  return `tool:active:${toolName}`;
 }
 
 function readResponseId(event: Record<string, unknown>): string | undefined {
@@ -341,20 +505,83 @@ function readResponseId(event: Record<string, unknown>): string | undefined {
 
 function readToolNameFromEvent(event: Record<string, unknown>): string | undefined {
   const message = asRecord(event.message);
-  const content = message?.content;
-  if (!Array.isArray(content)) return readString(message?.toolName);
+  const messageName = readString(message?.toolName);
+  if (messageName) return messageName;
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const partialName = readString(partial?.toolName);
+  if (partialName) return partialName;
+  return readToolNameFromContent(message?.content) ?? readToolNameFromContent(partial?.content);
+}
+
+function readToolNameFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
   for (const item of content) {
     const entry = asRecord(item);
     if (!entry || readString(entry.type) !== "toolCall") continue;
     const name = readString(entry.name);
     if (name) return name;
   }
-  return readString(message?.toolName);
+  return undefined;
+}
+
+function readToolCallIdFromEvent(event: Record<string, unknown>): string | undefined {
+  const message = asRecord(event.message);
+  const direct = readString(message?.toolCallId);
+  if (direct) return direct;
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const fromPartial = readString(partial?.toolCallId);
+  if (fromPartial) return fromPartial;
+  return readToolCallIdFromContent(message?.content) ?? readToolCallIdFromContent(partial?.content);
+}
+
+function readToolCallIdFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const item of content) {
+    const entry = asRecord(item);
+    if (!entry || readString(entry.type) !== "toolCall") continue;
+    const id = readString(entry.id);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+function extractAssistantText(event: Record<string, unknown>): string | undefined {
+  const textFromMessage = extractMessageText(event.message);
+  if (textFromMessage) return textFromMessage;
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const textFromPartial = extractMessageText(partial);
+  if (textFromPartial) return textFromPartial;
+  return readString(event.text);
+}
+
+function extractMessageText(message: unknown): string {
+  const record = asRecord(message);
+  if (!record) return "";
+  const directText = readString(record.text);
+  if (directText) return directText;
+  const content = record.content;
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const item of content) {
+    const entry = asRecord(item);
+    if (!entry || readString(entry.type) !== "text") continue;
+    const text = readString(entry.text);
+    if (text) parts.push(text);
+  }
+  return parts.join("\n\n");
+}
+
+function hasThinkingContent(message: Record<string, unknown> | undefined): boolean {
+  if (!message) return false;
+  const content = message.content;
+  if (!Array.isArray(content)) return false;
+  return content.some((item) => readString(asRecord(item)?.type) === "thinking");
 }
 
 function sendPrompt(): void {
   const text = promptInput.value.trim();
   if (!text) return;
+  appendTransientMessage("user", text);
   postUiMessage({ type: "send_prompt", text });
   promptInput.value = "";
 }
@@ -375,4 +602,13 @@ function createCorrelationId(): string {
   const timePart = Date.now().toString(36);
   const randomPart = Math.random().toString(36).slice(2, 10);
   return `ui-${timePart}-${randomPart}`;
+}
+
+function scrollToConversationBottom(): void {
+  messageFeed.scrollTop = messageFeed.scrollHeight;
+}
+
+function nextLocalMessageKey(prefix: string): string {
+  localMessageSeq += 1;
+  return `${prefix}:local:${localMessageSeq}`;
 }

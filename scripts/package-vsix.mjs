@@ -13,17 +13,36 @@ if (!version) {
 }
 
 const outputPath = `dist/pi-vscode-sidebar-${version}.vsix`;
-const result = spawnSync(
-  "pnpm",
-  ["dlx", "@vscode/vsce", "package", "--no-yarn", "--out", outputPath],
-  {
-    stdio: "inherit",
-    shell: true,
-    cwd: rootDir,
-  },
-);
+const result = runNpmCommand([
+  "exec",
+  "--yes",
+  "--package=@vscode/vsce",
+  "--",
+  "vsce",
+  "package",
+  "--no-yarn",
+  "--out",
+  outputPath,
+]);
 
 if (result.status !== 0) {
   console.error(`[package:vsix] Packaging failed for ${outputPath}.`);
   process.exit(result.status ?? 1);
+}
+
+function runNpmCommand(args) {
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath) {
+    return spawnSync(process.execPath, [npmExecPath, ...args], {
+      stdio: "inherit",
+      cwd: rootDir,
+    });
+  }
+
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  return spawnSync(npmCommand, args, {
+    stdio: "inherit",
+    cwd: rootDir,
+    shell: process.platform === "win32",
+  });
 }

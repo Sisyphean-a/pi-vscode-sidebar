@@ -40,13 +40,13 @@ The extension contributes these settings:
 ## Local development
 
 ```bash
-pnpm install
-pnpm test
-pnpm run test:e2e
-pnpm run test:perf
-pnpm typecheck
-pnpm lint
-pnpm build
+npm install
+npm test
+npm run test:e2e
+npm run test:perf
+npm run typecheck
+npm run lint
+npm run build
 ```
 
 ## 发布前检查
@@ -54,10 +54,10 @@ pnpm build
 - 门禁清单：`docs/quality-gates/perfection-gates.md`
 - 进度追踪：`docs/quality-gates/progress-tracker.md`
 - 最终发布前必须通过：
-  - `pnpm verify`
-  - `pnpm run test:e2e`
-  - `pnpm run test:perf`
-  - `pnpm run package:vsix`
+  - `npm run verify`
+  - `npm run test:e2e`
+  - `npm run test:perf`
+  - `npm run package:vsix`
 
 ## Project layout
 
