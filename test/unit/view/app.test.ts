@@ -19,8 +19,10 @@ describe("sidebar webview app", () => {
 
     await import("../../../src/view/webview/app.ts");
 
+    const title = document.getElementById("title");
+    const statusBadge = document.getElementById("status-badge");
     const systemMessage = document.getElementById("system-message");
-    expect(systemMessage?.textContent).toContain("侧边栏正在启动");
+    expect(title?.textContent).toBe("未连接Pi");
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -34,8 +36,9 @@ describe("sidebar webview app", () => {
       }),
     );
 
-    expect(systemMessage?.textContent).toContain("已连接");
-    expect(systemMessage?.textContent).not.toContain("侧边栏正在启动");
+    expect(title?.textContent).toBe("已连接");
+    expect(statusBadge).toBeNull();
+    expect(systemMessage).toBeNull();
     expect(
       postedMessages.some(
         (message) =>
@@ -55,8 +58,7 @@ describe("sidebar webview app", () => {
 
     await import("../../../src/view/webview/app.ts");
 
-    const systemMessage = document.getElementById("system-message");
-    expect(systemMessage?.textContent).toContain("侧边栏正在启动");
+    const title = document.getElementById("title");
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -69,8 +71,7 @@ describe("sidebar webview app", () => {
       }),
     );
 
-    expect(systemMessage?.textContent).toContain("已连接");
-    expect(systemMessage?.textContent).not.toContain("侧边栏正在启动");
+    expect(title?.textContent).toBe("已连接");
   });
 
   it("updates one assistant bubble during text streaming", async () => {
@@ -366,6 +367,189 @@ describe("sidebar webview app", () => {
     expect(userBubbles[0]?.textContent).toContain("帮我看下这个函数");
   });
 
+  it("does not render duplicated connection helper copy under the topbar", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const emptyState = document.getElementById("empty-state");
+    const systemMessage = document.getElementById("system-message");
+
+    expect(emptyState).toBeNull();
+    expect(systemMessage).toBeNull();
+  });
+
+  it("auto-resizes the composer and resets height after sending", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    const send = document.getElementById("send-button") as HTMLButtonElement;
+    let scrollHeight = 180;
+
+    Object.defineProperty(prompt, "scrollHeight", {
+      configurable: true,
+      get() {
+        return scrollHeight;
+      },
+    });
+
+    prompt.value = "第一行\n第二行\n第三行";
+    prompt.dispatchEvent(new Event("input"));
+
+    expect(prompt.style.height).toBe("180px");
+
+    scrollHeight = 72;
+    send.click();
+    await waitForFlush();
+
+    expect(prompt.value).toBe("");
+    expect(prompt.style.height).toBe("72px");
+  });
+
+  it("switches send button to stop while streaming and emits abort", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "streaming" },
+            rpc: {},
+          },
+        },
+      }),
+    );
+
+    const send = document.getElementById("send-button") as HTMLButtonElement;
+    expect(send.textContent).toContain("停止");
+
+    send.click();
+    await waitForFlush();
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "abort",
+      ),
+    ).toBe(true);
+  });
+
+  it("shows scroll-to-bottom button after user scrolls away during streaming", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const messageFeed = document.getElementById("message-feed") as HTMLDivElement;
+    Object.defineProperty(messageFeed, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 1200;
+      },
+    });
+    Object.defineProperty(messageFeed, "clientHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "streaming" },
+            rpc: {},
+          },
+        },
+      }),
+    );
+
+    for (let index = 0; index < 3; index += 1) {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "event",
+            data: {
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_delta",
+                partial: {
+                  role: "assistant",
+                  responseId: "resp-scroll-1",
+                  content: [{ type: "text", text: `第 ${index} 段输出` }],
+                },
+              },
+              message: {
+                role: "assistant",
+                responseId: "resp-scroll-1",
+                content: [{ type: "text", text: `第 ${index} 段输出` }],
+              },
+            },
+          },
+        }),
+      );
+    }
+
+    messageFeed.scrollTop = 200;
+    messageFeed.dispatchEvent(new Event("scroll"));
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              partial: {
+                role: "assistant",
+                responseId: "resp-scroll-1",
+                content: [{ type: "text", text: "第 4 段输出" }],
+              },
+            },
+            message: {
+              role: "assistant",
+              responseId: "resp-scroll-1",
+              content: [{ type: "text", text: "第 4 段输出" }],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    const scrollButton = document.getElementById("scroll-to-bottom-button");
+    expect(scrollButton?.classList.contains("hidden")).toBe(false);
+    expect(messageFeed.scrollTop).toBe(200);
+  });
+
   it("does not render role labels or local mode text", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
@@ -423,6 +607,70 @@ describe("sidebar webview app", () => {
     expect(assistantBubbles.length).toBe(1);
     expect(userBubbles[0]?.textContent).toContain("你好，帮我定位 bug");
     expect(assistantBubbles[0]?.textContent).toContain("收到，我先看堆栈信息。");
+  });
+
+  it("renders assistant markdown with code block and copy action", async () => {
+    const clipboardWrites: string[] = [];
+    Object.defineProperty(globalThis.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText(text: string) {
+          clipboardWrites.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_end",
+            message: {
+              role: "assistant",
+              responseId: "resp-md-1",
+              content: [
+                {
+                  type: "text",
+                  text: "# 标题\n\n这里有 `inline`。\n\n```ts\nconst value = 1;\n```",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const assistantBubble = document.querySelector(
+      "#message-feed .chat-message.role-assistant",
+    ) as HTMLElement | null;
+    const heading = assistantBubble?.querySelector("h1");
+    const inlineCode = assistantBubble?.querySelector("code");
+    const codeBlock = assistantBubble?.querySelector("pre code");
+    const copyButton = assistantBubble?.querySelector(
+      ".code-copy-button",
+    ) as HTMLButtonElement | null;
+
+    expect(heading?.textContent).toBe("标题");
+    expect(inlineCode?.textContent).toContain("inline");
+    expect(codeBlock?.textContent).toContain("const value = 1;");
+    expect(copyButton?.textContent).toContain("复制");
+
+    copyButton?.click();
+    await waitForFlush();
+
+    expect(clipboardWrites).toContain("const value = 1;");
   });
 
   it("replays completed thinking from get_messages query results", async () => {

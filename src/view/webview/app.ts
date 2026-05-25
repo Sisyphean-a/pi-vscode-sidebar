@@ -1,15 +1,10 @@
 import { createActivityTranscript } from "./activity-transcript.ts";
+import { resetComposerHeight, syncComposerHeight } from "./composer.ts";
 import { createExtensionUiRenderer } from "./extension-ui.ts";
+import { renderAssistantMarkdown } from "./markdown.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
-import {
-  asRecord,
-  escapeHtml,
-  mapStatusLabel,
-  readString,
-  stringifyJson,
-  truncateText,
-} from "./ui-text.ts";
+import { asRecord, readString, stringifyJson, truncateText } from "./ui-text.ts";
 
 declare function acquireVsCodeApi<T>(): {
   postMessage(message: T): void;
@@ -42,17 +37,16 @@ if (!root) {
 
 root.innerHTML = SIDEBAR_TEMPLATE;
 
-const statusBadge = expectElement<HTMLSpanElement>("status-badge");
 const title = expectElement<HTMLElement>("title");
 const modelSelect = expectElement<HTMLSelectElement>("model-select");
 const modelSelectButton = expectElement<HTMLButtonElement>("model-select-button");
 const modelSelectValue = expectElement<HTMLElement>("model-select-value");
-const systemMessage = expectElement<HTMLElement>("system-message");
 const promptInput = expectElement<HTMLTextAreaElement>("prompt-input");
 const sendButton = expectElement<HTMLButtonElement>("send-button");
 const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const abortButton = expectElement<HTMLButtonElement>("abort-button");
 const reconnectButton = expectElement<HTMLButtonElement>("reconnect-button");
+const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
 const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
 const thinkingLevelButton = expectElement<HTMLButtonElement>("thinking-level-button");
 const thinkingLevelValue = expectElement<HTMLElement>("thinking-level-value");
@@ -84,19 +78,27 @@ let modelOptionsLoaded = false;
 let pendingModelValue = "";
 let pendingThinkingLevel = "";
 let suppressModelSelectChange = false;
+let isStreamingPhase = false;
+let shouldAutoScroll = true;
+
+resetComposerHeight(promptInput);
 
 const renderExtensionUiRequest = createExtensionUiRenderer({
   panel: extensionUiPanel,
-  escapeHtml,
+  escapeHtml(text) {
+    return text;
+  },
   expectElement,
   postResponse(requestId, payload) {
     postUiMessage({ type: "respond_extension_ui", requestId, payload });
   },
   updateStatus(statusKey, statusText) {
-    updateStatusBadge(statusKey, statusText);
+    updateConnectionTitle(statusKey, statusText);
   },
   updateTitle(nextTitle) {
-    title.textContent = nextTitle;
+    if (nextTitle.trim()) {
+      title.textContent = nextTitle;
+    }
   },
   setEditorText(text) {
     promptInput.value = text;
@@ -108,7 +110,21 @@ const renderExtensionUiRequest = createExtensionUiRenderer({
 });
 
 sendButton.addEventListener("click", () => {
+  if (isStreamingPhase) {
+    postUiMessage({ type: "abort" });
+    return;
+  }
   sendPrompt();
+});
+promptInput.addEventListener("input", () => {
+  syncComposerHeight(promptInput);
+});
+messageFeed.addEventListener("scroll", () => {
+  handleMessageFeedScroll();
+});
+scrollToBottomButton.addEventListener("click", () => {
+  shouldAutoScroll = true;
+  scrollToConversationBottom(true);
 });
 promptInput.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.shiftKey) return;
@@ -151,7 +167,7 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   if (!message || typeof message !== "object" || !("type" in message)) return;
 
   if (message.type === "notice") {
-    renderSystemNotice(message.message);
+    updateConnectionTitle("connected", message.message);
     return;
   }
   if (message.type === "error") {
@@ -192,32 +208,22 @@ function expectElement<TElement extends HTMLElement>(id: string): TElement {
   return element as TElement;
 }
 
-function renderSystemNotice(text: string): void {
-  updateStatusBadge("connected", "已连接");
-  systemMessage.innerHTML = `<p>${escapeHtml(text)}</p>`;
-  bootingNoticeResolved = true;
-}
-
 function updateState(data: Record<string, unknown>): void {
   const view = asRecord(data.view);
   const rpc = asRecord(data.rpc);
   const phase = readString(view?.phase) ?? "idle";
   resolveBootingNotice(phase);
-  updateStatusBadge(phase);
+  updateConnectionTitle(phase);
+  syncStreamingPhase(phase);
   reconnectButton.classList.toggle("hidden", phase !== "process_dead");
   syncThinkingLevel(rpc);
   syncModelSelection(rpc);
   if (!modelOptionsLoaded) requestAvailableModels();
-
-  const sessionName = readString(rpc?.sessionName);
-  title.textContent = sessionName ? `就绪 · ${sessionName}` : "就绪";
 }
 
 function resolveBootingNotice(phase: string): void {
   if (bootingNoticeResolved) return;
-  const text =
-    phase === "process_dead" ? "Pi 进程已退出，请点击重连或新对话重试。" : "已连接，可开始对话。";
-  systemMessage.innerHTML = `<p>${escapeHtml(text)}</p>`;
+  updateConnectionTitle(phase);
   bootingNoticeResolved = true;
 }
 
@@ -244,11 +250,6 @@ function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
   pendingModelValue = "";
   renderModelSelect();
   modelSelectValue.textContent = currentModelValue || "选择模型";
-}
-
-function updateStatusBadge(statusKey: string, statusText?: string): void {
-  statusBadge.textContent = statusText?.trim() ? statusText : mapStatusLabel(statusKey);
-  statusBadge.dataset.statusKey = statusKey;
 }
 
 function applyAgentEvent(data: unknown): void {
@@ -431,6 +432,12 @@ function renderMessageText(state: ChatMessageRefs, text: string): void {
     return;
   }
 
+  if (state.role === "assistant") {
+    state.content.replaceChildren(renderAssistantMarkdown(text));
+    removeToolDetails(state);
+    return;
+  }
+
   state.content.textContent = text;
   removeToolDetails(state);
 }
@@ -592,6 +599,8 @@ function resetMessageFeed(): void {
   toolArgsByToolCallId.clear();
   messageFeed.replaceChildren();
   activityTranscript.reset();
+  shouldAutoScroll = true;
+  updateScrollToBottomButton();
 }
 
 function resolveAssistantStreamKey(event: Record<string, unknown>): string {
@@ -1052,6 +1061,7 @@ function sendPrompt(): void {
   appendTransientMessage("user", text);
   postUiMessage({ type: "send_prompt", text });
   promptInput.value = "";
+  resetComposerHeight(promptInput);
 }
 
 function postUiMessage(message: Record<string, unknown>): void {
@@ -1072,8 +1082,41 @@ function createCorrelationId(): string {
   return `ui-${timePart}-${randomPart}`;
 }
 
-function scrollToConversationBottom(): void {
+function scrollToConversationBottom(force = false): void {
+  if (!force && !shouldAutoScroll) {
+    updateScrollToBottomButton();
+    return;
+  }
   messageFeed.scrollTop = messageFeed.scrollHeight;
+  updateScrollToBottomButton();
+}
+
+function syncStreamingPhase(phase: string): void {
+  isStreamingPhase = phase === "streaming";
+  sendButton.textContent = isStreamingPhase ? "停止" : "发送";
+  sendButton.title = isStreamingPhase ? "停止生成" : "发送消息";
+}
+
+function updateConnectionTitle(statusKey: string, statusText?: string): void {
+  if (statusText?.trim()) {
+    title.textContent = statusText;
+    return;
+  }
+
+  title.textContent = statusKey === "process_dead" ? "未连接Pi" : "已连接";
+}
+
+function handleMessageFeedScroll(): void {
+  shouldAutoScroll = isNearBottom();
+  updateScrollToBottomButton();
+}
+
+function updateScrollToBottomButton(): void {
+  scrollToBottomButton.classList.toggle("hidden", !isStreamingPhase || shouldAutoScroll);
+}
+
+function isNearBottom(): boolean {
+  return messageFeed.scrollHeight - messageFeed.scrollTop - messageFeed.clientHeight <= 16;
 }
 
 function nextLocalMessageKey(prefix: string): string {

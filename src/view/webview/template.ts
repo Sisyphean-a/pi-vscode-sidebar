@@ -2,8 +2,7 @@ export const SIDEBAR_TEMPLATE = `
   <main class="app-shell">
     <header class="topbar">
       <div class="topbar-main">
-        <h1 id="title">就绪</h1>
-        <span id="status-badge" class="status-badge">空闲</span>
+        <h1 id="title">未连接Pi</h1>
       </div>
       <div class="topbar-actions">
         <button id="new-session-button" type="button" class="text-action" title="新建会话">新对话</button>
@@ -13,10 +12,10 @@ export const SIDEBAR_TEMPLATE = `
     </header>
 
     <section class="conversation">
-      <article id="system-message" class="message-card">
-        <p>侧边栏正在启动...</p>
-      </article>
       <div id="message-feed" class="message-feed"></div>
+      <button id="scroll-to-bottom-button" type="button" class="scroll-to-bottom hidden" title="回到底部">
+        回到底部
+      </button>
       <section id="extension-ui-panel" class="message-card extension-panel hidden"></section>
     </section>
 
