@@ -36,6 +36,7 @@ export type AgentEventType =
   | "agent_end"
   | "turn_start"
   | "turn_end"
+  | "thinking_level_changed"
   | "message_start"
   | "message_update"
   | "message_end"
@@ -101,6 +102,7 @@ const EVENT_TYPES = new Set<AgentEventType>([
   "agent_end",
   "turn_start",
   "turn_end",
+  "thinking_level_changed",
   "message_start",
   "message_update",
   "message_end",

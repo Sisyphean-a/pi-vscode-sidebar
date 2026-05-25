@@ -144,18 +144,52 @@ textarea {
   border-radius: 0;
   color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
   background: transparent;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
 }
 
-.chat-content h1,
-.chat-content p {
+.chat-content :where(h1, h2, h3, h4, h5, h6, p, ul, ol, pre, hr) {
   margin: 0;
 }
 
 .chat-content {
   display: grid;
-  gap: 10px;
+  gap: 6px;
+}
+
+.chat-content :where(h1, h2, h3, h4, h5, h6) {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.chat-content :where(h1, h2) {
+  font-weight: 700;
+}
+
+.chat-content :where(h3, h4, h5, h6) {
+  font-weight: 600;
+}
+
+.chat-content :where(ul, ol) {
+  padding-left: 18px;
+}
+
+.chat-content li + li {
+  margin-top: 4px;
+}
+
+.chat-content hr {
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
+}
+
+.chat-content p code,
+.chat-content li code,
+.chat-content :where(h1, h2, h3, h4, h5, h6) code {
+  border-radius: 6px;
+  padding: 1px 5px;
+  color: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
+  background: var(--vscode-textCodeBlock-background);
 }
 
 .chat-content code {
@@ -163,69 +197,118 @@ textarea {
 }
 
 .code-block {
-  display: grid;
-  gap: 8px;
+  position: relative;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
+  border-radius: 8px;
+  background: color-mix(
+    in srgb,
+    var(--vscode-textCodeBlock-background) 62%,
+    var(--vscode-sideBar-background)
+  );
 }
 
 .code-block-toolbar {
-  display: flex;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
 }
 
-.code-block-language {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
+.code-block pre {
+  margin: 0;
+  overflow: auto;
+  white-space: pre;
+}
+
+.code-block pre code {
+  display: block;
+  line-height: 1.5;
+  padding-right: 42px;
 }
 
 .code-copy-button {
-  border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-panel-border, var(--vscode-sideBar-border)) 72%, transparent);
   border-radius: 6px;
-  padding: 4px 8px;
-  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
-  background: transparent;
+  padding: 2px 7px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+  opacity: 0.3;
   cursor: pointer;
+  transition:
+    opacity 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.code-block:hover .code-copy-button,
+.code-copy-button:focus-visible {
+  opacity: 0.85;
 }
 
 .code-copy-button:hover {
   background: color-mix(
     in srgb,
-    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 84%,
+    var(--vscode-sideBar-background) 78%,
     var(--vscode-button-background)
   );
+  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
 }
 
 .file-reference-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 2px 0;
-  border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
-  border-radius: 999px;
-  padding: 3px 10px;
-  color: var(--vscode-textLink-foreground);
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 84%,
-    var(--vscode-textCodeBlock-background)
-  );
+  margin: 1px 0;
+  border: none;
+  padding: 0;
+  color: inherit;
+  background: transparent;
   cursor: pointer;
+  text-align: left;
 }
 
 .file-reference-chip:hover {
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 72%,
-    var(--vscode-textCodeBlock-background)
-  );
+  color: inherit;
+}
+
+.file-reference-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--vscode-button-foreground);
+  background: color-mix(in srgb, var(--vscode-textLink-foreground) 80%, white);
+}
+
+.file-reference-main {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
 .file-reference-name {
   font-weight: 600;
+  color: var(--vscode-textLink-foreground);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.file-reference-path {
+.file-reference-chip:hover .file-reference-name {
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+.file-reference-meta {
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
 }
@@ -235,6 +318,7 @@ textarea {
   background: color-mix(in srgb, var(--vscode-button-background) 72%, transparent);
   padding: 12px 16px;
   border-radius: 18px;
+  white-space: pre-wrap;
 }
 
 .chat-message.role-assistant .chat-content {
@@ -243,6 +327,11 @@ textarea {
     var(--vscode-editor-foreground) 88%,
     var(--vscode-descriptionForeground)
   );
+}
+
+.chat-message.role-tool .chat-content,
+.chat-message.role-error .chat-content {
+  white-space: pre-wrap;
 }
 
 .chat-message.role-tool .chat-content {
@@ -424,17 +513,17 @@ textarea {
   background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
   padding: 8px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .composer textarea {
   width: 100%;
-  min-height: 72px;
-  max-height: 220px;
+  min-height: 56px;
+  max-height: 180px;
   resize: none;
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 8px;
-  padding: 8px;
+  padding: 7px 9px;
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
 }
@@ -443,72 +532,73 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .composer-meta {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.composer-select-button {
-  border: none;
-  border-radius: 10px;
-  padding: 8px 12px;
-  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 78%,
-    var(--vscode-button-background)
-  );
-  cursor: pointer;
-}
-
-.composer-select-button:hover {
-  background: color-mix(
-    in srgb,
-    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 68%,
-    var(--vscode-button-background)
-  );
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .toolbar-left,
 .toolbar-right {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.mini-field {
-  display: inline-flex;
-  align-items: center;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
-.mini-field span {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.mini-field select {
-  min-width: 82px;
+.composer-select {
+  height: 30px;
   border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 6px;
-  padding: 3px 6px;
+  border-radius: 999px;
+  padding: 4px 24px 4px 10px;
   color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 78%,
+    var(--vscode-button-background)
+  );
+  appearance: auto;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
-#model-select.hidden,
-#thinking-level-select.hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
+#model-select {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 136px;
+}
+
+#thinking-level-select {
+  flex: 0 0 auto;
+  width: 72px;
+  min-width: 72px;
+}
+
+.send-action {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+@media (max-width: 360px) {
+  .composer-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .composer-meta {
+    flex: 1 1 100%;
+  }
 }
 
 .line {

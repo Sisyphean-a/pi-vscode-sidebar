@@ -23,28 +23,22 @@ export const SIDEBAR_TEMPLATE = `
       <textarea id="prompt-input" rows="3" placeholder="继续提问"></textarea>
       <div class="composer-toolbar">
         <div id="composer-meta" class="composer-meta">
-          <button id="model-select-button" type="button" class="composer-select-button" title="切换模型">
-            <span id="model-select-value">加载中</span>
-          </button>
-          <button id="thinking-level-button" type="button" class="composer-select-button" title="切换思考等级">
-            <span id="thinking-level-value">中</span>
-          </button>
+          <select id="model-select" class="composer-select" title="切换模型" disabled>
+            <option value="">加载中</option>
+          </select>
+          <select id="thinking-level-select" class="composer-select" title="切换思考等级">
+            <option value="off">关闭</option>
+            <option value="minimal">极低</option>
+            <option value="low">低</option>
+            <option value="medium" selected>中</option>
+            <option value="high">高</option>
+            <option value="xhigh">超高</option>
+          </select>
         </div>
         <div class="toolbar-right">
           <button id="send-button" type="button" class="send-action" title="发送消息">发送</button>
         </div>
       </div>
-      <select id="model-select" class="hidden" disabled>
-        <option value="">加载中</option>
-      </select>
-      <select id="thinking-level-select" class="hidden">
-        <option value="off">关闭</option>
-        <option value="minimal">极低</option>
-        <option value="low">低</option>
-        <option value="medium" selected>中</option>
-        <option value="high">高</option>
-        <option value="xhigh">超高</option>
-      </select>
     </footer>
   </main>
 `;

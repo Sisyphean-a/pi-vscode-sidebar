@@ -1,7 +1,7 @@
 import { createActivityTranscript } from "./activity-transcript.ts";
 import { resetComposerHeight, syncComposerHeight } from "./composer.ts";
 import { createExtensionUiRenderer } from "./extension-ui.ts";
-import { renderAssistantMarkdown } from "./markdown.ts";
+import { renderAssistantMarkdown, renderPlainTextWithReferences } from "./markdown.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
 import { asRecord, readString, stringifyJson, truncateText } from "./ui-text.ts";
@@ -15,7 +15,7 @@ type ChatRole = "user" | "assistant" | "tool" | "error";
 interface ChatMessageRefs {
   role: ChatRole;
   article: HTMLElement;
-  content: HTMLParagraphElement;
+  content: HTMLElement;
   details?: HTMLDetailsElement;
   detailsSummary?: HTMLElement;
   detailsPre?: HTMLPreElement;
@@ -24,18 +24,17 @@ interface ChatMessageRefs {
 interface AvailableModel {
   provider: string;
   id: string;
+  name?: string;
   contextWindow?: number;
   reasoning?: boolean;
+  thinkingLevelMap?: ThinkingLevelMap;
 }
 
-interface PromptReferenceState {
-  path: string;
-  startLine: number;
-  endLine?: number;
-  content: string;
-  language: string;
-  reference: string;
-}
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+
+type ThinkingLevelMap = Partial<Record<ThinkingLevel, string | null>>;
+
+const THINKING_LEVEL_ORDER: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
 const vscode = acquireVsCodeApi<object>();
 const root = document.getElementById("app");
@@ -48,8 +47,6 @@ root.innerHTML = SIDEBAR_TEMPLATE;
 
 const title = expectElement<HTMLElement>("title");
 const modelSelect = expectElement<HTMLSelectElement>("model-select");
-const modelSelectButton = expectElement<HTMLButtonElement>("model-select-button");
-const modelSelectValue = expectElement<HTMLElement>("model-select-value");
 const promptInput = expectElement<HTMLTextAreaElement>("prompt-input");
 const sendButton = expectElement<HTMLButtonElement>("send-button");
 const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
@@ -57,8 +54,6 @@ const abortButton = expectElement<HTMLButtonElement>("abort-button");
 const reconnectButton = expectElement<HTMLButtonElement>("reconnect-button");
 const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
 const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
-const thinkingLevelButton = expectElement<HTMLButtonElement>("thinking-level-button");
-const thinkingLevelValue = expectElement<HTMLElement>("thinking-level-value");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
 const messageFeed = expectElement<HTMLElement>("message-feed");
 const messagesByKey = new Map<string, ChatMessageRefs>();
@@ -71,6 +66,7 @@ const activityTranscript = createActivityTranscript({
 });
 const availableModelsByValue = new Map<string, AvailableModel>();
 const availableModelValues: string[] = [];
+const modelLabelByValue = new Map<string, string>();
 const activityGroupByToolCallId = new Map<string, string>();
 const toolArgsByToolCallId = new Map<string, string>();
 const TOOL_COLLAPSE_MIN_LENGTH = 180;
@@ -89,7 +85,6 @@ let pendingThinkingLevel = "";
 let suppressModelSelectChange = false;
 let isStreamingPhase = false;
 let shouldAutoScroll = true;
-const promptReferences = new Map<string, PromptReferenceState>();
 
 resetComposerHeight(promptInput);
 
@@ -166,14 +161,6 @@ modelSelect.addEventListener("change", () => {
   appendInlineNote(`已请求切换模型到 ${formatModelValue(model)}`);
   postUiMessage({ type: "set_model", provider: model.provider, modelId: model.id });
 });
-modelSelectButton.addEventListener("click", () => {
-  modelSelect.focus();
-  modelSelect.click();
-});
-thinkingLevelButton.addEventListener("click", () => {
-  thinkingLevelSelect.focus();
-  thinkingLevelSelect.click();
-});
 
 window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   const message = event.data;
@@ -233,8 +220,8 @@ function updateState(data: Record<string, unknown>): void {
   updateConnectionTitle(phase);
   syncStreamingPhase(phase);
   reconnectButton.classList.toggle("hidden", phase !== "process_dead");
-  syncThinkingLevel(rpc);
   syncModelSelection(rpc);
+  syncThinkingLevel(rpc);
   if (!modelOptionsLoaded) requestAvailableModels();
 }
 
@@ -248,13 +235,10 @@ function syncThinkingLevel(rpc: Record<string, unknown> | undefined): void {
   const nextLevel = readString(rpc?.thinkingLevel);
   if (!nextLevel) return;
   lastRpcThinkingLevel = nextLevel;
+  renderThinkingLevelSelect(pendingThinkingLevel || nextLevel);
   if (pendingThinkingLevel && nextLevel !== pendingThinkingLevel) return;
   pendingThinkingLevel = "";
-  const hasOption = Array.from(thinkingLevelSelect.options).some(
-    (option) => option.value === nextLevel,
-  );
-  if (hasOption) thinkingLevelSelect.value = nextLevel;
-  thinkingLevelValue.textContent = formatThinkingLevelLabel(nextLevel);
+  if (hasThinkingLevelOption(nextLevel)) thinkingLevelSelect.value = nextLevel;
 }
 
 function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
@@ -266,7 +250,6 @@ function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
   if (pendingModelValue && currentModelValue !== pendingModelValue) return;
   pendingModelValue = "";
   renderModelSelect();
-  modelSelectValue.textContent = currentModelValue || "选择模型";
 }
 
 function applyAgentEvent(data: unknown): void {
@@ -274,6 +257,10 @@ function applyAgentEvent(data: unknown): void {
   const type = readString(event?.type);
   if (!event || !type) return;
 
+  if (type === "thinking_level_changed") {
+    syncThinkingLevel({ thinkingLevel: event.level });
+    return;
+  }
   if (type === "query_result") {
     applyQueryResultEvent(event);
     return;
@@ -414,7 +401,7 @@ function ensureMessage(key: string, role: ChatRole): ChatMessageRefs {
 
   const article = document.createElement("article");
   article.className = `chat-message role-${role}`;
-  const content = document.createElement("p");
+  const content = document.createElement("div");
   content.className = "chat-content";
   article.append(content);
   messageFeed.append(article);
@@ -451,6 +438,12 @@ function renderMessageText(state: ChatMessageRefs, text: string): void {
 
   if (state.role === "assistant") {
     state.content.replaceChildren(renderAssistantMarkdown(text));
+    removeToolDetails(state);
+    return;
+  }
+
+  if (state.role === "user" || state.role === "error") {
+    state.content.replaceChildren(renderPlainTextWithReferences(text));
     removeToolDetails(state);
     return;
   }
@@ -716,12 +709,18 @@ function applyAvailableModelsQueryResult(event: Record<string, unknown>): void {
   if (!models) return;
   availableModelsByValue.clear();
   availableModelValues.length = 0;
+  modelLabelByValue.clear();
   for (const model of models) {
     const value = formatModelValue(model);
     availableModelsByValue.set(value, model);
     availableModelValues.push(value);
   }
   availableModelValues.sort();
+  for (const value of availableModelValues) {
+    const model = availableModelsByValue.get(value);
+    if (!model) continue;
+    modelLabelByValue.set(value, buildModelSelectLabel(model));
+  }
   modelOptionsLoaded = true;
   renderModelSelect();
 }
@@ -731,36 +730,42 @@ function renderModelSelect(): void {
   modelSelect.replaceChildren();
 
   if (!modelOptionsLoaded) {
-    appendModelOption(currentModelValue || "加载中", currentModelValue);
+    appendModelOption(
+      currentModelValue ? formatLooseModelLabel(currentModelValue) : "加载中",
+      currentModelValue,
+    );
     modelSelect.disabled = true;
-    modelSelectValue.textContent = currentModelValue || "加载中";
     suppressModelSelectChange = false;
     return;
   }
 
   if (availableModelValues.length === 0) {
-    appendModelOption(currentModelValue || "无可用模型", currentModelValue);
+    appendModelOption(
+      currentModelValue ? formatLooseModelLabel(currentModelValue) : "无可用模型",
+      currentModelValue,
+    );
     modelSelect.disabled = true;
-    modelSelectValue.textContent = currentModelValue || "无可用模型";
     suppressModelSelectChange = false;
     return;
   }
 
   if (!currentModelValue) {
-    appendModelOption("选择模型", "");
+    appendModelOption("模型", "");
   } else if (!availableModelsByValue.has(currentModelValue)) {
-    appendModelOption(currentModelValue, currentModelValue);
+    appendModelOption(formatLooseModelLabel(currentModelValue), currentModelValue);
   }
 
   for (const value of availableModelValues) {
-    appendModelOption(value, value);
+    appendModelOption(modelLabelByValue.get(value) ?? formatLooseModelLabel(value), value);
   }
 
   modelSelect.value =
     currentModelValue && hasModelOption(currentModelValue) ? currentModelValue : "";
   modelSelect.disabled = false;
-  modelSelectValue.textContent = currentModelValue || "选择模型";
   suppressModelSelectChange = false;
+  renderThinkingLevelSelect(
+    pendingThinkingLevel || lastRpcThinkingLevel || thinkingLevelSelect.value,
+  );
 }
 
 function appendModelOption(label: string, value: string): void {
@@ -785,27 +790,138 @@ function extractAvailableModels(data: unknown): AvailableModel[] | undefined {
     const provider = readString(model?.provider);
     const id = readString(model?.id);
     if (!provider || !id) continue;
+    const name = readString(model?.name);
     const contextWindow =
       typeof model?.contextWindow === "number" ? model.contextWindow : undefined;
     const reasoning = model?.reasoning === true;
+    const thinkingLevelMap = extractThinkingLevelMap(model?.thinkingLevelMap);
     available.push({
       provider,
       id,
+      name,
       contextWindow,
       reasoning,
+      thinkingLevelMap,
     });
   }
   return available;
+}
+
+function extractThinkingLevelMap(value: unknown): ThinkingLevelMap | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const thinkingLevelMap: ThinkingLevelMap = {};
+  let hasEntry = false;
+  for (const level of THINKING_LEVEL_ORDER) {
+    const entry = record[level];
+    if (entry === null) {
+      thinkingLevelMap[level] = null;
+      hasEntry = true;
+      continue;
+    }
+    const mapped = readString(entry);
+    if (!mapped) continue;
+    thinkingLevelMap[level] = mapped;
+    hasEntry = true;
+  }
+  return hasEntry ? thinkingLevelMap : undefined;
 }
 
 function formatModelValue(model: Pick<AvailableModel, "provider" | "id">): string {
   return `${model.provider}/${model.id}`;
 }
 
+function buildModelSelectLabel(model: AvailableModel): string {
+  const compact = compactModelName(model.name ?? model.id);
+  const duplicateCount = availableModelValues.filter((value) => {
+    const available = availableModelsByValue.get(value);
+    if (!available) return false;
+    return compactModelName(available.name ?? available.id) === compact;
+  }).length;
+  if (duplicateCount > 1) return `${model.provider} ${compact}`;
+  return compact;
+}
+
+function formatLooseModelLabel(modelValue: string): string {
+  const [, rawModelId = modelValue] = modelValue.split("/", 2);
+  return compactModelName(rawModelId);
+}
+
+function compactModelName(name: string): string {
+  const trimmed = name.trim();
+  const lowered = trimmed.toLowerCase();
+  if (lowered.startsWith("gpt-")) {
+    return trimmed.slice(4).replace(/-/g, " ");
+  }
+  if (lowered.startsWith("claude-")) {
+    return trimmed.slice(7).replace(/-/g, " ");
+  }
+  if (lowered.startsWith("gemini-")) {
+    return trimmed.slice(7).replace(/-/g, " ");
+  }
+  return trimmed;
+}
+
 function requestAvailableModels(): void {
   if (hasRequestedModels) return;
   hasRequestedModels = true;
   postUiMessage({ type: "get_available_models" });
+}
+
+function renderThinkingLevelSelect(preferredLevel: string): void {
+  const supportedLevels = getSupportedThinkingLevels();
+  const nextValue = clampThinkingLevel(supportedLevels, preferredLevel);
+  thinkingLevelSelect.replaceChildren(
+    ...supportedLevels.map((level) => new Option(formatThinkingLevelLabel(level), level)),
+  );
+  thinkingLevelSelect.disabled = supportedLevels.length <= 1;
+  thinkingLevelSelect.value = nextValue;
+}
+
+function getSupportedThinkingLevels(): ThinkingLevel[] {
+  const model = resolveActiveModelForThinking();
+  if (!model) return [...THINKING_LEVEL_ORDER];
+  if (!model.reasoning) return ["off"];
+  return THINKING_LEVEL_ORDER.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    if (level === "xhigh") return mapped !== undefined;
+    return true;
+  });
+}
+
+function resolveActiveModelForThinking(): AvailableModel | undefined {
+  const modelValue = pendingModelValue || currentModelValue || modelSelect.value;
+  if (!modelValue) return undefined;
+  return availableModelsByValue.get(modelValue);
+}
+
+function clampThinkingLevel(
+  supportedLevels: ThinkingLevel[],
+  preferredLevel: string,
+): ThinkingLevel {
+  const fallbackLevel = supportedLevels[0] ?? "off";
+  if (supportedLevels.length === 0) return fallbackLevel;
+  if (supportedLevels.includes(preferredLevel as ThinkingLevel)) {
+    return preferredLevel as ThinkingLevel;
+  }
+  const requestedIndex = THINKING_LEVEL_ORDER.indexOf(preferredLevel as ThinkingLevel);
+  if (requestedIndex === -1) return fallbackLevel;
+  for (let index = requestedIndex; index < THINKING_LEVEL_ORDER.length; index += 1) {
+    const candidate = THINKING_LEVEL_ORDER[index];
+    if (!candidate) continue;
+    if (supportedLevels.includes(candidate)) return candidate;
+  }
+  for (let index = requestedIndex - 1; index >= 0; index -= 1) {
+    const candidate = THINKING_LEVEL_ORDER[index];
+    if (!candidate) continue;
+    if (supportedLevels.includes(candidate)) return candidate;
+  }
+  return fallbackLevel;
+}
+
+function hasThinkingLevelOption(level: string): boolean {
+  return Array.from(thinkingLevelSelect.options).some((option) => option.value === level);
 }
 
 function appendInlineNote(message: string): void {
@@ -1076,7 +1192,7 @@ function sendPrompt(): void {
   const text = promptInput.value.trim();
   if (!text) return;
   appendTransientMessage("user", text);
-  postUiMessage({ type: "send_prompt", text: expandPromptReferences(text) });
+  postUiMessage({ type: "send_prompt", text });
   promptInput.value = "";
   resetComposerHeight(promptInput);
 }
@@ -1126,24 +1242,12 @@ function updateConnectionTitle(statusKey: string, statusText?: string): void {
 function insertPromptReference(payload: unknown): void {
   const data = asRecord(payload);
   const reference = readString(data?.reference);
-  const path = readString(data?.path);
-  const content = readString(data?.content);
-  const language = readString(data?.language) ?? "";
-  const startLine = readInteger(data?.startLine);
-  const endLine = readOptionalInteger(data?.endLine);
-  if (!reference || !path || !content || startLine === undefined) {
+  if (!reference) {
     return;
   }
 
-  promptReferences.set(reference, {
-    path,
-    startLine,
-    endLine,
-    content,
-    language,
-    reference,
-  });
-  insertTextAtSelection(`${reference}\n`);
+  insertTextAtSelection(buildPromptReferenceInsertion(reference));
+  promptInput.focus();
 }
 
 function insertTextAtSelection(text: string): void {
@@ -1156,18 +1260,24 @@ function insertTextAtSelection(text: string): void {
   syncComposerHeight(promptInput);
 }
 
-function expandPromptReferences(text: string): string {
-  let expanded = text;
-  for (const reference of promptReferences.values()) {
-    if (!expanded.includes(reference.reference)) {
-      continue;
-    }
-    expanded = expanded.replace(
-      reference.reference,
-      `${reference.reference}\n\`\`\`${reference.language}\n${reference.content}\n\`\`\``,
-    );
-  }
-  return expanded;
+function buildPromptReferenceInsertion(reference: string): string {
+  const start = promptInput.selectionStart ?? promptInput.value.length;
+  const end = promptInput.selectionEnd ?? promptInput.value.length;
+  const before = promptInput.value.slice(0, start);
+  const after = promptInput.value.slice(end);
+  const prefix = shouldInsertLeadingSpace(before) ? " " : "";
+  const suffix = shouldInsertTrailingSpace(after) ? " " : "";
+  return `${prefix}${reference}${suffix}`;
+}
+
+function shouldInsertLeadingSpace(text: string): boolean {
+  if (!text) return false;
+  return !/\s$/.test(text);
+}
+
+function shouldInsertTrailingSpace(text: string): boolean {
+  if (!text) return true;
+  return !/^\s/.test(text);
 }
 
 function handleMessageFeedScroll(): void {
@@ -1207,17 +1317,6 @@ function updateScrollToBottomButton(): void {
 
 function isNearBottom(): boolean {
   return messageFeed.scrollHeight - messageFeed.scrollTop - messageFeed.clientHeight <= 16;
-}
-
-function readInteger(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) ? value : undefined;
-}
-
-function readOptionalInteger(value: unknown): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  return readInteger(value);
 }
 
 function nextLocalMessageKey(prefix: string): string {

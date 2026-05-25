@@ -292,6 +292,28 @@ describe("sidebar webview app", () => {
     ).toBe(true);
   });
 
+  it("renders model and thinking controls as native selects", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const composerMeta = document.getElementById("composer-meta");
+    const modelSelect = document.getElementById("model-select") as HTMLSelectElement | null;
+    const thinkingSelect = document.getElementById(
+      "thinking-level-select",
+    ) as HTMLSelectElement | null;
+
+    expect(composerMeta?.querySelectorAll("select").length).toBe(2);
+    expect(modelSelect?.classList.contains("composer-select")).toBe(true);
+    expect(thinkingSelect?.classList.contains("composer-select")).toBe(true);
+    expect(document.getElementById("model-select-button")).toBeNull();
+    expect(document.getElementById("thinking-level-button")).toBeNull();
+  });
+
   it("shows a clamp notice when backend keeps a different thinking level", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
@@ -609,7 +631,7 @@ describe("sidebar webview app", () => {
     expect(assistantBubbles[0]?.textContent).toContain("收到，我先看堆栈信息。");
   });
 
-  it("renders assistant markdown with code block and copy action", async () => {
+  it("renders assistant markdown with compact code block, copy action, and bold text", async () => {
     const clipboardWrites: string[] = [];
     Object.defineProperty(globalThis.navigator, "clipboard", {
       configurable: true,
@@ -641,7 +663,7 @@ describe("sidebar webview app", () => {
               content: [
                 {
                   type: "text",
-                  text: "# 标题\n\n这里有 `inline`。\n\n```ts\nconst value = 1;\n```",
+                  text: "# 标题\n\n这里有 `inline` 和 **重点**。\n\n```ts\nconst value = 1;\n```",
                 },
               ],
             },
@@ -657,20 +679,65 @@ describe("sidebar webview app", () => {
     ) as HTMLElement | null;
     const heading = assistantBubble?.querySelector("h1");
     const inlineCode = assistantBubble?.querySelector("code");
+    const bold = assistantBubble?.querySelector("strong");
     const codeBlock = assistantBubble?.querySelector("pre code");
+    const codeToolbar = assistantBubble?.querySelector(".code-block-toolbar");
+    const languageLabel = assistantBubble?.querySelector(".code-block-language");
     const copyButton = assistantBubble?.querySelector(
       ".code-copy-button",
     ) as HTMLButtonElement | null;
 
     expect(heading?.textContent).toBe("标题");
     expect(inlineCode?.textContent).toContain("inline");
+    expect(bold?.textContent).toBe("重点");
     expect(codeBlock?.textContent).toContain("const value = 1;");
+    expect(codeToolbar).not.toBeNull();
+    expect(languageLabel).toBeNull();
     expect(copyButton?.textContent).toContain("复制");
 
     copyButton?.click();
     await waitForFlush();
 
     expect(clipboardWrites).toContain("const value = 1;");
+  });
+
+  it("mounts assistant markdown in a block container instead of a paragraph", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_end",
+            message: {
+              role: "assistant",
+              responseId: "resp-md-structure-1",
+              content: [
+                {
+                  type: "text",
+                  text: "段落一\n\n### 小标题\n\n- 列表项",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const assistantBubble = document.querySelector(
+      "#message-feed .chat-message.role-assistant .chat-content",
+    ) as HTMLElement | null;
+
+    expect(assistantBubble?.tagName).toBe("DIV");
   });
 
   it("renders markdown separators, headings and list items", async () => {
@@ -751,8 +818,12 @@ describe("sidebar webview app", () => {
     await waitForFlush();
 
     const refButton = document.querySelector(".file-reference-chip") as HTMLButtonElement | null;
-    expect(refButton?.textContent).toContain("env.ts");
-    expect(refButton?.textContent).toContain("src/pi/env.ts:11-23");
+    const refBadge = refButton?.querySelector(".file-reference-badge");
+    const refName = refButton?.querySelector(".file-reference-name");
+    const refMeta = refButton?.querySelector(".file-reference-meta");
+    expect(refBadge?.textContent).toBe("TS");
+    expect(refName?.textContent).toBe("env.ts");
+    expect(refMeta?.textContent).toBe("src/pi/env.ts:11-23");
 
     refButton?.click();
     await waitForFlush();
@@ -771,7 +842,7 @@ describe("sidebar webview app", () => {
     ).toBe(true);
   });
 
-  it("inserts prompt reference tokens into the composer and expands them on send", async () => {
+  it("inserts prompt reference tokens into the composer, sends them raw, and renders clickable chips in user messages", async () => {
     const postedMessages: unknown[] = [];
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
@@ -784,10 +855,10 @@ describe("sidebar webview app", () => {
     await import("../../../src/view/webview/app.ts");
 
     const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
-    prompt.focus();
     prompt.value = "请分析这段代码：";
     prompt.selectionStart = prompt.value.length;
     prompt.selectionEnd = prompt.value.length;
+    (document.getElementById("send-button") as HTMLButtonElement).focus();
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -806,7 +877,8 @@ describe("sidebar webview app", () => {
     );
 
     await waitForFlush();
-    expect(prompt.value).toContain("@src/pi/env.ts:11-23");
+    expect(prompt.value).toBe("请分析这段代码： @src/pi/env.ts:11-23 ");
+    expect(document.activeElement).toBe(prompt);
 
     (document.getElementById("send-button") as HTMLButtonElement).click();
     await waitForFlush();
@@ -818,9 +890,67 @@ describe("sidebar webview app", () => {
         (message as { type?: string }).type === "send_prompt",
     ) as { text?: string } | undefined;
 
-    expect(sendPromptMessage?.text).toContain("@src/pi/env.ts:11-23");
-    expect(sendPromptMessage?.text).toContain("```typescript");
-    expect(sendPromptMessage?.text).toContain("export const PI = 3.14;");
+    expect(sendPromptMessage?.text).toBe("请分析这段代码： @src/pi/env.ts:11-23");
+
+    const userReferenceChip = document.querySelector(
+      "#message-feed .chat-message.role-user .file-reference-chip",
+    ) as HTMLButtonElement | null;
+    expect(userReferenceChip?.textContent).toContain("env.ts");
+    expect(userReferenceChip?.textContent).toContain("src/pi/env.ts:11-23");
+
+    userReferenceChip?.click();
+    await waitForFlush();
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string; path?: string; startLine?: number; endLine?: number })
+            .type === "open_file_reference" &&
+          (message as { path?: string }).path === "src/pi/env.ts" &&
+          (message as { startLine?: number }).startLine === 11 &&
+          (message as { endLine?: number }).endLine === 23,
+      ),
+    ).toBe(true);
+  });
+
+  it("inserts prompt reference tokens with surrounding spaces and moves focus to the composer", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    const sendButton = document.getElementById("send-button") as HTMLButtonElement;
+    prompt.value = "beforeafter";
+    prompt.selectionStart = 6;
+    prompt.selectionEnd = 6;
+    sendButton.focus();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "insert_prompt_reference",
+          data: {
+            reference: "@src/pi/env.ts:11-23",
+            path: "src/pi/env.ts",
+            startLine: 11,
+            endLine: 23,
+            content: "export const PI = 3.14;\n",
+            language: "typescript",
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    expect(prompt.value).toBe("before @src/pi/env.ts:11-23 after");
+    expect(document.activeElement).toBe(prompt);
   });
 
   it("replays completed thinking from get_messages query results", async () => {
@@ -1299,7 +1429,7 @@ describe("sidebar webview app", () => {
     expect(activityGroup?.textContent).toContain("执行了：读取、bash、codegraph_files");
   });
 
-  it("renders model and thinking controls as compact text buttons", async () => {
+  it("renders model and thinking controls as compact native selects", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
     ).acquireVsCodeApi = () => ({
@@ -1311,8 +1441,69 @@ describe("sidebar webview app", () => {
     const composerMeta = document.getElementById("composer-meta");
     expect(composerMeta?.textContent).not.toContain("模型");
     expect(composerMeta?.textContent).not.toContain("思考");
-    expect(document.querySelectorAll(".mini-field").length).toBe(0);
-    expect(document.querySelectorAll(".composer-select-button").length).toBe(2);
+    expect(composerMeta?.querySelectorAll("select").length).toBe(2);
+    expect(document.querySelectorAll(".composer-select").length).toBe(2);
+  });
+
+  it("filters thinking level options from model thinkingLevelMap", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [
+                {
+                  provider: "hi-code",
+                  id: "gpt-5.4",
+                  reasoning: true,
+                  thinkingLevelMap: {
+                    off: null,
+                    minimal: null,
+                    xhigh: "xhigh",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: {
+              model: { provider: "hi-code", id: "gpt-5.4" },
+              thinkingLevel: "high",
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const thinkingSelect = document.getElementById("thinking-level-select") as HTMLSelectElement;
+    expect(Array.from(thinkingSelect.options).map((option) => option.value)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
   });
 
   it("loads available models into the selector and sends set_model on change", async () => {

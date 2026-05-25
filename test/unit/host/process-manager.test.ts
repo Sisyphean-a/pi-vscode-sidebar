@@ -4,6 +4,7 @@ import {
   createPendingRequestStore,
   createPiRpcProcessManager,
 } from "../../../src/host/process-manager.ts";
+import { isAgentEventLike } from "../../../src/shared/rpc-types.ts";
 
 describe("createJsonlFramer", () => {
   it("parses complete lines and preserves partial tails", () => {
@@ -44,6 +45,10 @@ describe("createPendingRequestStore", () => {
 });
 
 describe("createPiRpcProcessManager", () => {
+  it("recognizes thinking_level_changed as an agent event", () => {
+    expect(isAgentEventLike({ type: "thinking_level_changed", level: "high" })).toBe(true);
+  });
+
   it("fails fast when pi binary is missing", async () => {
     const manager = createPiRpcProcessManager();
     const events: Array<{ type: string; message?: string }> = [];
