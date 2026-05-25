@@ -10,8 +10,9 @@
     "url": "https://github.com/Sisyphean-a/pi-vscode-sidebar.git"
   },
   "files": [
-    "dist/extension.cjs",
-    "dist/extension.cjs.map",
+    "dist/extension.js",
+    "dist/extension.js.map",
+    "dist/package.json",
     "dist/webview/**",
     "assets/**",
     "bridge/**",
@@ -21,21 +22,22 @@
     "LICENSE"
   ],
   "type": "module",
-  "main": "./dist/extension.cjs",
+  "main": "./dist/extension.js",
   "scripts": {
-    "build": "rolldown -c rolldown.config.ts",
+    "build": "rolldown -c rolldown.config.ts && node scripts/write-dist-package-json.mjs",
     "dev": "rolldown -c rolldown.config.ts -w",
     "format": "oxlint src test bridge rolldown.config.ts --fix && oxfmt src test bridge rolldown.config.ts",
     "lint": "oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit test/integration",
-    "pretest:e2e": "rolldown -c rolldown.config.ts",
+    "pretest:e2e": "npm run build",
     "test:e2e": "tsx test/e2e/run-e2e.ts",
     "test:perf": "vitest run --config vitest.perf.config.ts",
-    "prepackage:vsix": "rolldown -c rolldown.config.ts",
+    "prepackage:vsix": "npm run build",
     "package:vsix": "node scripts/package-vsix.mjs",
     "release:check": "node scripts/release-check.mjs",
-    "verify": "vitest run test/unit test/integration && oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts && tsc --noEmit"
+    "verify": "vitest run test/unit test/integration && oxlint src test bridge rolldown.config.ts && oxfmt --check src test bridge rolldown.config.ts && tsc --noEmit",
+    "vscode:prepublish": "npm run build"
   },
   "contributes": {
     "commands": [

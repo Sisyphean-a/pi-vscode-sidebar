@@ -116,6 +116,29 @@ describe("SidebarController", () => {
     expect(requestMessage?.data.id).toBe("req-1");
   });
 
+  it("forwards rpc command and response events to the webview sink", async () => {
+    const harness = createHarness();
+
+    harness.emitProcessEvent({
+      type: "rpc_command_sent",
+      id: "rpc-1",
+      command: "prompt",
+    });
+    harness.emitProcessEvent({
+      type: "rpc_response",
+      id: "rpc-1",
+      command: "prompt",
+      success: true,
+    });
+
+    const forwardedEvents = harness.emitted.filter(
+      (item) => typeof item === "object" && item && (item as { type?: string }).type === "event",
+    ) as Array<{ data?: { type?: string; command?: string } }>;
+
+    expect(forwardedEvents.some((item) => item.data?.type === "rpc_command_sent")).toBe(true);
+    expect(forwardedEvents.some((item) => item.data?.type === "rpc_response")).toBe(true);
+  });
+
   it("normalizes extension ui response payload and sends it to RPC", async () => {
     const harness = createHarness();
 
@@ -144,6 +167,24 @@ describe("SidebarController", () => {
     );
 
     expect(hasQueryResult).toBe(true);
+  });
+
+  it("emits query result after set_thinking_level command succeeds", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({ type: "set_thinking_level", level: "xhigh" });
+
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          item &&
+          (item as { type?: string }).type === "event" &&
+          (item as { data?: { type?: string; command?: string } }).data?.type === "query_result" &&
+          (item as { data?: { type?: string; command?: string } }).data?.command ===
+            "set_thinking_level",
+      ),
+    ).toBe(true);
   });
 
   it("uses ui correlationId as rpc command id", async () => {
@@ -222,6 +263,58 @@ describe("SidebarController", () => {
 
   it("blocks prompt command while streaming", async () => {
     const harness = createHarness({ phase: "streaming" });
+
+    await harness.controller.handleUiMessage({ type: "send_prompt", text: "hello" });
+
+    expect(harness.sentCommands).toEqual([]);
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          item &&
+          (item as { type?: string; scope?: string }).type === "error" &&
+          (item as { type?: string; scope?: string }).scope === "ui",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not block prompt after non-blocking extension ui notify event", async () => {
+    const harness = createHarness();
+
+    harness.emitProcessEvent({
+      type: "extension_ui_request",
+      id: "req-notify",
+      method: "notify",
+      message: "Heads up",
+    });
+
+    await harness.controller.handleUiMessage({ type: "send_prompt", text: "hello" });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "prompt",
+      message: "hello",
+      images: undefined,
+    });
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          item &&
+          (item as { type?: string; scope?: string }).type === "error" &&
+          (item as { type?: string; scope?: string }).scope === "ui",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps prompt blocked while waiting for blocking extension ui input", async () => {
+    const harness = createHarness();
+
+    harness.emitProcessEvent({
+      type: "extension_ui_request",
+      id: "req-input",
+      method: "input",
+      title: "Need input",
+    });
 
     await harness.controller.handleUiMessage({ type: "send_prompt", text: "hello" });
 

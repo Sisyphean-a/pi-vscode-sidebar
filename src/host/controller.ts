@@ -154,6 +154,12 @@ class SidebarControllerImpl implements SidebarController {
     const response = await this.options.rpcClient.send(withCommandId(command, correlationId));
     this.reportCommandFailure(response, correlationId);
     await this.syncState();
+    if (response.success && shouldEmitCommandResult(command.type)) {
+      this.emit({
+        type: "event",
+        data: { type: "query_result", command: command.type, data: response.data, correlationId },
+      });
+    }
     if (command.type === "new_session" || command.type === "switch_session") {
       await this.replayMessages(correlationId, true);
     }
@@ -228,18 +234,17 @@ class SidebarControllerImpl implements SidebarController {
       this.emitState();
       return;
     }
-    if (event.type === "rpc_command_sent" || event.type === "rpc_response") {
-      return;
-    }
     if (event.type === "extension_ui_request") {
       this.options.logger?.debug({
         scope: "controller",
         correlationId: event.id,
         message: `extension ui request: ${event.method}`,
       });
-      this.options.stateStore.markAwaitingExtensionUi();
-      this.emitState();
-      this.scheduleExtensionUiTimeout(event.id);
+      if (isBlockingExtensionUiMethod(event.method)) {
+        this.options.stateStore.markAwaitingExtensionUi();
+        this.emitState();
+        this.scheduleExtensionUiTimeout(event.id);
+      }
       this.emit({ type: "extension_ui_request", data: event });
       return;
     }
@@ -336,6 +341,14 @@ class SidebarControllerImpl implements SidebarController {
     }
     this.pendingExtensionUiRequests.clear();
   }
+}
+
+function shouldEmitCommandResult(commandType: RpcCommand["type"]): boolean {
+  return commandType === "set_model" || commandType === "set_thinking_level";
+}
+
+function isBlockingExtensionUiMethod(method: string): boolean {
+  return method === "select" || method === "confirm" || method === "input" || method === "editor";
 }
 
 function normalizeExtensionUiResponse(requestId: string, payload: unknown): RpcExtensionUIResponse {

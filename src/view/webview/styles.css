@@ -125,14 +125,13 @@ textarea {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 14px;
   padding-right: 2px;
 }
 
 .chat-message {
   display: flex;
   flex-direction: column;
-  gap: 4px;
   max-width: 92%;
 }
 
@@ -146,37 +145,34 @@ textarea {
   align-self: flex-start;
 }
 
-.chat-role {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
-}
-
 .chat-content {
   margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
-  border-radius: 10px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
   color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
-  background: var(--vscode-editor-background);
+  background: transparent;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .chat-message.role-user .chat-content {
-  border-color: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
+  background: color-mix(in srgb, var(--vscode-button-background) 72%, transparent);
+  padding: 12px 16px;
+  border-radius: 18px;
 }
 
 .chat-message.role-assistant .chat-content {
-  border-color: var(--vscode-panel-border, var(--vscode-sideBar-border));
-  background: var(--vscode-editor-background);
+  color: color-mix(
+    in srgb,
+    var(--vscode-editor-foreground) 88%,
+    var(--vscode-descriptionForeground)
+  );
 }
 
 .chat-message.role-tool .chat-content {
-  border-style: dashed;
-  border-color: var(--vscode-textLink-foreground);
-  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  color: var(--vscode-descriptionForeground);
 }
 
 .chat-tool-details {
@@ -185,13 +181,158 @@ textarea {
 
 .chat-tool-details summary {
   font-size: 11px;
-  color: var(--vscode-textLink-foreground);
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 88%,
+    var(--vscode-editor-foreground)
+  );
 }
 
 .chat-message.role-error .chat-content {
-  border-color: var(--vscode-errorForeground);
   color: var(--vscode-errorForeground);
-  background: color-mix(in srgb, var(--vscode-errorForeground) 8%, transparent);
+  background: transparent;
+}
+
+.chat-activity-group {
+  align-self: stretch;
+  max-width: 100%;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.chat-activity-group summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground);
+}
+
+.chat-activity-group summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-top: -1px;
+  flex: 0 0 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: center;
+  transition: transform 120ms ease;
+  opacity: 0.75;
+}
+
+.chat-activity-group[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.chat-activity-group summary::-webkit-details-marker,
+.chat-activity-group summary::marker {
+  display: none;
+  content: "";
+}
+
+.chat-activity-list {
+  margin: 0;
+  padding: 8px 0 0 20px;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.chat-activity-item {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-activity-item-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.chat-activity-item-label {
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 82%,
+    var(--vscode-editor-foreground)
+  );
+  word-break: break-word;
+}
+
+.chat-activity-item[data-status="running"] .chat-activity-item-label {
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 72%,
+    var(--vscode-textLink-foreground)
+  );
+}
+
+.chat-activity-item-detail {
+  margin: 0;
+}
+
+.chat-activity-item-detail-summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground);
+}
+
+.chat-activity-item-detail-summary::-webkit-details-marker,
+.chat-activity-item-detail-summary::marker {
+  display: none;
+  content: "";
+}
+
+.chat-activity-item-detail-summary::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-top: -1px;
+  flex: 0 0 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transform-origin: center;
+  transition: transform 120ms ease;
+  opacity: 0.72;
+}
+
+.chat-activity-item-detail[open] .chat-activity-item-detail-summary::before {
+  transform: rotate(45deg);
+}
+
+.chat-activity-item-detail-pre {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 12px;
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 76%,
+    var(--vscode-input-foreground)
+  );
+  background: color-mix(
+    in srgb,
+    var(--vscode-textCodeBlock-background) 78%,
+    var(--vscode-sideBar-background)
+  );
+}
+
+.chat-activity-note {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  padding-left: 20px;
 }
 
 .extension-panel h2 {
@@ -232,21 +373,39 @@ textarea {
   flex-wrap: wrap;
 }
 
+.composer-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.composer-select-button {
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 78%,
+    var(--vscode-button-background)
+  );
+  cursor: pointer;
+}
+
+.composer-select-button:hover {
+  background: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, var(--vscode-sideBar-background)) 68%,
+    var(--vscode-button-background)
+  );
+}
+
 .toolbar-left,
 .toolbar-right {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.mode-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-badge-background);
 }
 
 .mini-field {
@@ -267,6 +426,15 @@ textarea {
   padding: 3px 6px;
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
+}
+
+#model-select.hidden,
+#thinking-level-select.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .line {

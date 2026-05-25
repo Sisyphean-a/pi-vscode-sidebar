@@ -1,7 +1,15 @@
+import { createActivityTranscript } from "./activity-transcript.ts";
 import { createExtensionUiRenderer } from "./extension-ui.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
-import { asRecord, escapeHtml, mapStatusLabel, readString } from "./ui-text.ts";
+import {
+  asRecord,
+  escapeHtml,
+  mapStatusLabel,
+  readString,
+  stringifyJson,
+  truncateText,
+} from "./ui-text.ts";
 
 declare function acquireVsCodeApi<T>(): {
   postMessage(message: T): void;
@@ -12,11 +20,17 @@ type ChatRole = "user" | "assistant" | "tool" | "error";
 interface ChatMessageRefs {
   role: ChatRole;
   article: HTMLElement;
-  roleLabel: HTMLDivElement;
   content: HTMLParagraphElement;
   details?: HTMLDetailsElement;
   detailsSummary?: HTMLElement;
   detailsPre?: HTMLPreElement;
+}
+
+interface AvailableModel {
+  provider: string;
+  id: string;
+  contextWindow?: number;
+  reasoning?: boolean;
 }
 
 const vscode = acquireVsCodeApi<object>();
@@ -30,7 +44,9 @@ root.innerHTML = SIDEBAR_TEMPLATE;
 
 const statusBadge = expectElement<HTMLSpanElement>("status-badge");
 const title = expectElement<HTMLElement>("title");
-const modelChip = expectElement<HTMLElement>("model-chip");
+const modelSelect = expectElement<HTMLSelectElement>("model-select");
+const modelSelectButton = expectElement<HTMLButtonElement>("model-select-button");
+const modelSelectValue = expectElement<HTMLElement>("model-select-value");
 const systemMessage = expectElement<HTMLElement>("system-message");
 const promptInput = expectElement<HTMLTextAreaElement>("prompt-input");
 const sendButton = expectElement<HTMLButtonElement>("send-button");
@@ -38,13 +54,36 @@ const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const abortButton = expectElement<HTMLButtonElement>("abort-button");
 const reconnectButton = expectElement<HTMLButtonElement>("reconnect-button");
 const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
+const thinkingLevelButton = expectElement<HTMLButtonElement>("thinking-level-button");
+const thinkingLevelValue = expectElement<HTMLElement>("thinking-level-value");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
 const messageFeed = expectElement<HTMLElement>("message-feed");
 const messagesByKey = new Map<string, ChatMessageRefs>();
 const messageTextByKey = new Map<string, string>();
+const activityTranscript = createActivityTranscript({
+  container: messageFeed,
+  onChange() {
+    scrollToConversationBottom();
+  },
+});
+const availableModelsByValue = new Map<string, AvailableModel>();
+const availableModelValues: string[] = [];
+const activityGroupByToolCallId = new Map<string, string>();
+const toolArgsByToolCallId = new Map<string, string>();
 const TOOL_COLLAPSE_MIN_LENGTH = 180;
+const ACTIVE_ASSISTANT_MESSAGE_KEY = "assistant:active";
+const ACTIVE_ASSISTANT_ACTIVITY_KEY = "assistant-activity:live";
+const ACTIVE_THINKING_ACTIVITY_KEY = "assistant-thinking:live";
 let bootingNoticeResolved = false;
 let localMessageSeq = 0;
+let currentModelValue = "";
+let lastRpcModelValue = "";
+let lastRpcThinkingLevel = "";
+let hasRequestedModels = false;
+let modelOptionsLoaded = false;
+let pendingModelValue = "";
+let pendingThinkingLevel = "";
+let suppressModelSelectChange = false;
 
 const renderExtensionUiRequest = createExtensionUiRenderer({
   panel: extensionUiPanel,
@@ -64,7 +103,7 @@ const renderExtensionUiRequest = createExtensionUiRenderer({
     promptInput.focus();
   },
   queueNotice(message) {
-    appendTransientMessage("tool", message);
+    appendInlineNote(message);
   },
 });
 
@@ -87,7 +126,24 @@ reconnectButton.addEventListener("click", () => {
 });
 thinkingLevelSelect.addEventListener("change", () => {
   const level = thinkingLevelSelect.value;
+  pendingThinkingLevel = level;
   postUiMessage({ type: "set_thinking_level", level });
+});
+modelSelect.addEventListener("change", () => {
+  if (suppressModelSelectChange) return;
+  const model = availableModelsByValue.get(modelSelect.value);
+  if (!model) return;
+  pendingModelValue = formatModelValue(model);
+  appendInlineNote(`已请求切换模型到 ${formatModelValue(model)}`);
+  postUiMessage({ type: "set_model", provider: model.provider, modelId: model.id });
+});
+modelSelectButton.addEventListener("click", () => {
+  modelSelect.focus();
+  modelSelect.click();
+});
+thinkingLevelButton.addEventListener("click", () => {
+  thinkingLevelSelect.focus();
+  thinkingLevelSelect.click();
 });
 
 window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
@@ -100,6 +156,15 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   }
   if (message.type === "error") {
     resolveBootingNotice("process_dead");
+    if (pendingThinkingLevel) {
+      pendingThinkingLevel = "";
+      if (lastRpcThinkingLevel) thinkingLevelSelect.value = lastRpcThinkingLevel;
+    }
+    if (pendingModelValue) {
+      pendingModelValue = "";
+      currentModelValue = lastRpcModelValue;
+      renderModelSelect();
+    }
     appendTransientMessage("error", message.message);
     return;
   }
@@ -119,6 +184,7 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
 });
 
 postUiMessage({ type: "ui_ready" });
+requestAvailableModels();
 
 function expectElement<TElement extends HTMLElement>(id: string): TElement {
   const element = document.getElementById(id);
@@ -140,7 +206,8 @@ function updateState(data: Record<string, unknown>): void {
   updateStatusBadge(phase);
   reconnectButton.classList.toggle("hidden", phase !== "process_dead");
   syncThinkingLevel(rpc);
-  updateModelChip(rpc);
+  syncModelSelection(rpc);
+  if (!modelOptionsLoaded) requestAvailableModels();
 
   const sessionName = readString(rpc?.sessionName);
   title.textContent = sessionName ? `就绪 · ${sessionName}` : "就绪";
@@ -157,29 +224,26 @@ function resolveBootingNotice(phase: string): void {
 function syncThinkingLevel(rpc: Record<string, unknown> | undefined): void {
   const nextLevel = readString(rpc?.thinkingLevel);
   if (!nextLevel) return;
+  lastRpcThinkingLevel = nextLevel;
+  if (pendingThinkingLevel && nextLevel !== pendingThinkingLevel) return;
+  pendingThinkingLevel = "";
   const hasOption = Array.from(thinkingLevelSelect.options).some(
     (option) => option.value === nextLevel,
   );
   if (hasOption) thinkingLevelSelect.value = nextLevel;
+  thinkingLevelValue.textContent = formatThinkingLevelLabel(nextLevel);
 }
 
-function updateModelChip(rpc: Record<string, unknown> | undefined): void {
+function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
   const modelRecord = asRecord(rpc?.model);
   const provider = readString(modelRecord?.provider);
   const modelId = readString(modelRecord?.id);
-  if (!provider && !modelId) {
-    modelChip.textContent = "模型：按 Pi 配置";
-    return;
-  }
-  if (!provider) {
-    modelChip.textContent = `模型：${modelId}`;
-    return;
-  }
-  if (!modelId) {
-    modelChip.textContent = `模型：${provider}`;
-    return;
-  }
-  modelChip.textContent = `模型：${provider}/${modelId}`;
+  currentModelValue = provider && modelId ? formatModelValue({ provider, id: modelId }) : "";
+  lastRpcModelValue = currentModelValue;
+  if (pendingModelValue && currentModelValue !== pendingModelValue) return;
+  pendingModelValue = "";
+  renderModelSelect();
+  modelSelectValue.textContent = currentModelValue || "选择模型";
 }
 
 function updateStatusBadge(statusKey: string, statusText?: string): void {
@@ -196,6 +260,7 @@ function applyAgentEvent(data: unknown): void {
     applyQueryResultEvent(event);
     return;
   }
+  if (type === "rpc_command_sent" || type === "rpc_response") return;
   if (type === "message_start") {
     applyMessageStart(event);
     return;
@@ -220,15 +285,7 @@ function applyAgentEvent(data: unknown): void {
 function applyMessageStart(event: Record<string, unknown>): void {
   const message = asRecord(event.message);
   const role = readString(message?.role);
-  if (role === "assistant") {
-    const key = resolveAssistantStreamKey(event);
-    ensureMessage(key, "assistant");
-    return;
-  }
-  if (role === "toolResult") {
-    const key = resolveToolResultKey(event, readString(message?.toolName) ?? "tool");
-    ensureMessage(key, "tool");
-  }
+  if (role === "assistant") return;
 }
 
 function applyMessageUpdate(event: Record<string, unknown>): void {
@@ -236,25 +293,40 @@ function applyMessageUpdate(event: Record<string, unknown>): void {
   const assistantEventType = readString(assistantEvent?.type);
   if (assistantEventType?.startsWith("toolcall_")) {
     const toolName = readToolNameFromEvent(event) ?? "tool";
-    const streamKey = resolveToolStreamKey(event, toolName);
-    const statusText =
-      assistantEventType === "toolcall_end"
-        ? `工具 ${toolName} 调用完成`
-        : `正在调用工具 ${toolName}`;
-    setMessageText(streamKey, "tool", statusText, "replace");
+    const toolArgs = readToolArgsFromEvent(event);
+    const groupKey = resolveAssistantActivityGroupKey(event);
+    const entryKey = resolveToolEntryKey(event, toolName);
+    rememberToolActivityGroup(event, groupKey);
+    rememberToolArgs(event, toolArgs);
+    activityTranscript.record({
+      groupKey,
+      entryKey,
+      status: "running",
+      label: summarizeToolLabel(toolName, toolArgs),
+      detail: toolArgs,
+      detailSummary: summarizeToolDetailSummary(toolName, toolArgs),
+      family: resolveToolFamily(toolName),
+    });
+    return;
+  }
+  if (assistantEventType?.startsWith("thinking_")) {
+    const thinkingText = extractThinkingText(event);
+    if (!thinkingText) return;
+    activityTranscript.record({
+      groupKey: resolveThinkingActivityGroupKey(event),
+      entryKey: resolveThinkingEntryKey(event),
+      status: assistantEventType === "thinking_end" ? "done" : "running",
+      label: `思考：${thinkingText}`,
+      family: "thinking",
+    });
     return;
   }
 
   const assistantText = extractAssistantText(event);
   if (assistantText) {
     const streamKey = resolveAssistantStreamKey(event);
-    setMessageText(streamKey, "assistant", assistantText, "merge");
+    setMessageText(streamKey, "assistant", assistantText, "merge", [ACTIVE_ASSISTANT_MESSAGE_KEY]);
     return;
-  }
-
-  if (hasThinkingContent(asRecord(assistantEvent?.partial))) {
-    const streamKey = resolveAssistantStreamKey(event);
-    setMessageText(streamKey, "assistant", "思考中...", "replace");
   }
 }
 
@@ -264,30 +336,51 @@ function applyMessageEnd(event: Record<string, unknown>): void {
   if (role === "assistant") {
     const streamKey = resolveAssistantStreamKey(event);
     const finalText = extractMessageText(message);
-    if (finalText) setMessageText(streamKey, "assistant", finalText, "replace");
+    if (finalText) {
+      setMessageText(streamKey, "assistant", finalText, "replace", [ACTIVE_ASSISTANT_MESSAGE_KEY]);
+    }
+    activityTranscript.finalizeGroup(resolveAssistantActivityGroupKey(event));
     return;
   }
   if (role === "toolResult") {
     const toolName = readString(message?.toolName) ?? readToolNameFromEvent(event) ?? "tool";
-    const streamKey = resolveToolResultKey(event, toolName);
     const toolText = extractMessageText(message);
-    const finalText = toolText || `工具 ${toolName} 已返回结果`;
-    setMessageText(streamKey, "tool", finalText, "replace");
+    const toolArgs = readToolArgsFromEvent(event) ?? readStoredToolArgs(message);
+    const groupKey = resolveToolActivityGroupKey(event);
+    const liveEntryKey = resolveToolEntryKey(event, toolName);
+    const finalEntryKey = resolveToolResultEntryKey(message, toolName);
+    activityTranscript.renameEntry(groupKey, liveEntryKey, finalEntryKey);
+    activityTranscript.record({
+      groupKey,
+      entryKey: finalEntryKey,
+      status: "done",
+      label: summarizeToolLabel(toolName, toolArgs, toolText),
+      detail: toolText || undefined,
+      detailSummary: summarizeToolResultDetailSummary(toolName, toolText),
+      family: resolveToolFamily(toolName),
+    });
   }
 }
 
 function applyToolExecutionEvent(event: Record<string, unknown>, eventType: string): void {
   const toolName = readString(event.toolName) ?? "tool";
-  const key = `tool-exec:${toolName}`;
-  if (eventType === "tool_execution_start") {
-    setMessageText(key, "tool", `工具 ${toolName} 开始执行`, "replace");
-    return;
-  }
-  if (eventType === "tool_execution_update") {
-    setMessageText(key, "tool", `工具 ${toolName} 执行中`, "replace");
-    return;
-  }
-  setMessageText(key, "tool", `工具 ${toolName} 执行完成`, "replace");
+  const groupKey = resolveToolActivityGroupKey(event);
+  const entryKey = resolveToolEntryKey(event, toolName);
+  const toolArgs = readToolArgsFromExecutionEvent(event);
+  const toolText = extractToolExecutionText(event);
+  rememberToolActivityGroup(event, groupKey);
+  rememberToolArgs(event, toolArgs);
+  activityTranscript.record({
+    groupKey,
+    entryKey,
+    status: eventType === "tool_execution_end" ? "done" : "running",
+    label: summarizeToolLabel(toolName, toolArgs, toolText),
+    detail: toolText,
+    detailSummary: toolText
+      ? summarizeToolResultDetailSummary(toolName, toolText)
+      : summarizeToolDetailSummary(toolName, toolArgs),
+    family: resolveToolFamily(toolName),
+  });
 }
 
 function ensureMessage(key: string, role: ChatRole): ChatMessageRefs {
@@ -296,7 +389,6 @@ function ensureMessage(key: string, role: ChatRole): ChatMessageRefs {
     if (existing.role !== role) {
       existing.role = role;
       existing.article.className = `chat-message role-${role}`;
-      existing.roleLabel.textContent = roleLabel(role);
       if (role !== "tool") removeToolDetails(existing);
     }
     return existing;
@@ -304,14 +396,11 @@ function ensureMessage(key: string, role: ChatRole): ChatMessageRefs {
 
   const article = document.createElement("article");
   article.className = `chat-message role-${role}`;
-  const roleTag = document.createElement("div");
-  roleTag.className = "chat-role";
-  roleTag.textContent = roleLabel(role);
   const content = document.createElement("p");
   content.className = "chat-content";
-  article.append(roleTag, content);
+  article.append(content);
   messageFeed.append(article);
-  const created: ChatMessageRefs = { role, article, roleLabel: roleTag, content };
+  const created: ChatMessageRefs = { role, article, content };
   messagesByKey.set(key, created);
   scrollToConversationBottom();
   return created;
@@ -322,7 +411,9 @@ function setMessageText(
   role: ChatRole,
   nextText: string,
   mode: "merge" | "replace",
+  fallbackKeys: string[] = [],
 ): void {
+  promoteMessageKey(key, fallbackKeys);
   const state = ensureMessage(key, role);
   const currentText = messageTextByKey.get(key) ?? "";
   const resolvedText = mode === "merge" ? mergeMessageText(currentText, nextText) : nextText;
@@ -403,6 +494,18 @@ function mergeMessageText(previous: string, incoming: string): string {
 
 function applyQueryResultEvent(event: Record<string, unknown>): void {
   const command = readString(event.command);
+  if (command === "get_available_models") {
+    applyAvailableModelsQueryResult(event);
+    return;
+  }
+  if (command === "set_thinking_level") {
+    applyThinkingLevelCommandResult();
+    return;
+  }
+  if (command === "set_model") {
+    applyModelCommandResult();
+    return;
+  }
   if (command !== "get_messages") return;
   const replace = event.replace === true;
   const messages = extractMessageArray(event.data);
@@ -439,62 +542,66 @@ function hydrateHistoryMessage(message: Record<string, unknown>, index: number):
     return;
   }
   if (role === "assistant") {
-    const text = extractMessageText(message);
-    if (!text) return;
-    const key =
-      readString(message.responseId) ?? readString(message.id) ?? `history:assistant:${index}`;
-    setMessageText(key, "assistant", text, "replace");
+    hydrateHistoryAssistantMessage(message, index);
     return;
   }
   if (role === "toolResult") {
     const toolName = readString(message.toolName);
     const output = extractMessageText(message);
-    const text = output
-      ? toolName
-        ? `${toolName}\n${output}`
-        : output
-      : `工具 ${toolName ?? "调用"} 输出`;
+    const groupKey = `history:tool-group:${index}`;
     const key = readString(message.toolCallId) ?? readString(message.id) ?? `history:tool:${index}`;
-    setMessageText(key, "tool", text, "replace");
+    activityTranscript.record({
+      groupKey,
+      entryKey: key,
+      status: "done",
+      label: summarizeToolLabel(toolName ?? "tool", undefined, output),
+      detail: output || undefined,
+      detailSummary: summarizeToolResultDetailSummary(toolName ?? "tool", output),
+      family: resolveToolFamily(toolName ?? "tool"),
+    });
+    activityTranscript.finalizeGroup(groupKey);
   }
+}
+
+function hydrateHistoryAssistantMessage(message: Record<string, unknown>, index: number): void {
+  const responseId = readString(message.responseId) ?? readString(message.id);
+  const thinkingText = extractThinkingTextFromMessage(message);
+  if (thinkingText) {
+    const groupKey = responseId ? `history:thinking:${responseId}` : `history:thinking:${index}`;
+    const entryKey = responseId ? `${responseId}:thinking` : `history:thinking-entry:${index}`;
+    activityTranscript.record({
+      groupKey,
+      entryKey,
+      status: "done",
+      label: `思考：${thinkingText}`,
+      family: "thinking",
+    });
+    activityTranscript.finalizeGroup(groupKey);
+  }
+
+  const text = extractMessageText(message);
+  if (!text) return;
+  const key = responseId ?? `history:assistant:${index}`;
+  setMessageText(key, "assistant", text, "replace");
 }
 
 function resetMessageFeed(): void {
   messagesByKey.clear();
   messageTextByKey.clear();
+  activityGroupByToolCallId.clear();
+  toolArgsByToolCallId.clear();
   messageFeed.replaceChildren();
-}
-
-function roleLabel(role: ChatRole): string {
-  if (role === "user") return "你";
-  if (role === "assistant") return "Pi";
-  if (role === "tool") return "工具";
-  return "错误";
+  activityTranscript.reset();
 }
 
 function resolveAssistantStreamKey(event: Record<string, unknown>): string {
   const responseId = readResponseId(event);
-  return responseId ? `assistant:${responseId}` : "assistant:active";
-}
-
-function resolveToolStreamKey(event: Record<string, unknown>, toolName: string): string {
-  const responseId = readResponseId(event);
-  if (responseId) return `tool:${responseId}:${toolName}`;
-  const toolCallId = readToolCallIdFromEvent(event);
-  if (toolCallId) return `tool:${toolCallId}`;
-  return `tool:active:${toolName}`;
-}
-
-function resolveToolResultKey(event: Record<string, unknown>, toolName: string): string {
-  const responseId = readResponseId(event);
-  if (responseId) return `tool:${responseId}:${toolName}`;
-  const message = asRecord(event.message);
-  const toolCallId = readString(message?.toolCallId);
-  if (toolCallId) return `tool:${toolCallId}`;
-  return `tool:active:${toolName}`;
+  return responseId ? `assistant:${responseId}` : ACTIVE_ASSISTANT_MESSAGE_KEY;
 }
 
 function readResponseId(event: Record<string, unknown>): string | undefined {
+  const direct = readString(event.responseId);
+  if (direct) return direct;
   const message = asRecord(event.message);
   const fromMessage = readString(message?.responseId);
   if (fromMessage) return fromMessage;
@@ -520,27 +627,6 @@ function readToolNameFromContent(content: unknown): string | undefined {
     if (!entry || readString(entry.type) !== "toolCall") continue;
     const name = readString(entry.name);
     if (name) return name;
-  }
-  return undefined;
-}
-
-function readToolCallIdFromEvent(event: Record<string, unknown>): string | undefined {
-  const message = asRecord(event.message);
-  const direct = readString(message?.toolCallId);
-  if (direct) return direct;
-  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
-  const fromPartial = readString(partial?.toolCallId);
-  if (fromPartial) return fromPartial;
-  return readToolCallIdFromContent(message?.content) ?? readToolCallIdFromContent(partial?.content);
-}
-
-function readToolCallIdFromContent(content: unknown): string | undefined {
-  if (!Array.isArray(content)) return undefined;
-  for (const item of content) {
-    const entry = asRecord(item);
-    if (!entry || readString(entry.type) !== "toolCall") continue;
-    const id = readString(entry.id);
-    if (id) return id;
   }
   return undefined;
 }
@@ -571,11 +657,393 @@ function extractMessageText(message: unknown): string {
   return parts.join("\n\n");
 }
 
-function hasThinkingContent(message: Record<string, unknown> | undefined): boolean {
-  if (!message) return false;
-  const content = message.content;
-  if (!Array.isArray(content)) return false;
-  return content.some((item) => readString(asRecord(item)?.type) === "thinking");
+function extractThinkingText(event: Record<string, unknown>): string | undefined {
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const textFromPartial = extractThinkingTextFromMessage(partial);
+  if (textFromPartial) return textFromPartial;
+  const assistantEvent = asRecord(event.assistantMessageEvent);
+  const deltaText = readString(assistantEvent?.delta);
+  if (deltaText) return deltaText;
+  const endContent = readString(assistantEvent?.content);
+  if (endContent) return endContent;
+  const textFromMessage = extractThinkingTextFromMessage(event.message);
+  if (textFromMessage) return textFromMessage;
+  return undefined;
+}
+
+function extractThinkingTextFromMessage(message: unknown): string | undefined {
+  const record = asRecord(message);
+  if (!record) return undefined;
+  const content = record.content;
+  if (!Array.isArray(content)) return undefined;
+  for (const item of content) {
+    const entry = asRecord(item);
+    if (!entry || readString(entry.type) !== "thinking") continue;
+    const thinking = readString(entry.thinking);
+    if (thinking) return thinking;
+  }
+  return undefined;
+}
+
+function applyAvailableModelsQueryResult(event: Record<string, unknown>): void {
+  const models = extractAvailableModels(event.data);
+  if (!models) return;
+  availableModelsByValue.clear();
+  availableModelValues.length = 0;
+  for (const model of models) {
+    const value = formatModelValue(model);
+    availableModelsByValue.set(value, model);
+    availableModelValues.push(value);
+  }
+  availableModelValues.sort();
+  modelOptionsLoaded = true;
+  renderModelSelect();
+}
+
+function renderModelSelect(): void {
+  suppressModelSelectChange = true;
+  modelSelect.replaceChildren();
+
+  if (!modelOptionsLoaded) {
+    appendModelOption(currentModelValue || "加载中", currentModelValue);
+    modelSelect.disabled = true;
+    modelSelectValue.textContent = currentModelValue || "加载中";
+    suppressModelSelectChange = false;
+    return;
+  }
+
+  if (availableModelValues.length === 0) {
+    appendModelOption(currentModelValue || "无可用模型", currentModelValue);
+    modelSelect.disabled = true;
+    modelSelectValue.textContent = currentModelValue || "无可用模型";
+    suppressModelSelectChange = false;
+    return;
+  }
+
+  if (!currentModelValue) {
+    appendModelOption("选择模型", "");
+  } else if (!availableModelsByValue.has(currentModelValue)) {
+    appendModelOption(currentModelValue, currentModelValue);
+  }
+
+  for (const value of availableModelValues) {
+    appendModelOption(value, value);
+  }
+
+  modelSelect.value =
+    currentModelValue && hasModelOption(currentModelValue) ? currentModelValue : "";
+  modelSelect.disabled = false;
+  modelSelectValue.textContent = currentModelValue || "选择模型";
+  suppressModelSelectChange = false;
+}
+
+function appendModelOption(label: string, value: string): void {
+  modelSelect.append(new Option(label, value));
+}
+
+function hasModelOption(value: string): boolean {
+  return Array.from(modelSelect.options).some((option) => option.value === value);
+}
+
+function extractAvailableModels(data: unknown): AvailableModel[] | undefined {
+  const payload = asRecord(data);
+  const models = Array.isArray(payload?.models)
+    ? payload.models
+    : Array.isArray(asRecord(payload?.data)?.models)
+      ? (asRecord(payload?.data)?.models as unknown[])
+      : undefined;
+  if (!models) return undefined;
+  const available: AvailableModel[] = [];
+  for (const entry of models) {
+    const model = asRecord(entry);
+    const provider = readString(model?.provider);
+    const id = readString(model?.id);
+    if (!provider || !id) continue;
+    const contextWindow =
+      typeof model?.contextWindow === "number" ? model.contextWindow : undefined;
+    const reasoning = model?.reasoning === true;
+    available.push({
+      provider,
+      id,
+      contextWindow,
+      reasoning,
+    });
+  }
+  return available;
+}
+
+function formatModelValue(model: Pick<AvailableModel, "provider" | "id">): string {
+  return `${model.provider}/${model.id}`;
+}
+
+function requestAvailableModels(): void {
+  if (hasRequestedModels) return;
+  hasRequestedModels = true;
+  postUiMessage({ type: "get_available_models" });
+}
+
+function appendInlineNote(message: string): void {
+  activityTranscript.appendNote(nextLocalActivityKey("note"), message);
+}
+
+function nextLocalActivityKey(prefix: string): string {
+  localMessageSeq += 1;
+  return `${prefix}:${localMessageSeq}`;
+}
+
+function resolveAssistantActivityGroupKey(event: Record<string, unknown>): string {
+  const responseId = readResponseId(event);
+  if (!responseId) return ACTIVE_ASSISTANT_ACTIVITY_KEY;
+  const key = `assistant-activity:${responseId}`;
+  activityTranscript.renameGroup(ACTIVE_ASSISTANT_ACTIVITY_KEY, key);
+  return key;
+}
+
+function resolveToolEntryKey(event: Record<string, unknown>, toolName: string): string {
+  const toolCallId = readToolCallIdFromEvent(event);
+  if (toolCallId) return toolCallId;
+  const responseId = readResponseId(event);
+  return responseId ? `${responseId}:${toolName}` : `live:${toolName}`;
+}
+
+function resolveToolResultEntryKey(
+  message: Record<string, unknown> | undefined,
+  toolName: string,
+): string {
+  const toolCallId = readString(message?.toolCallId);
+  if (toolCallId) return toolCallId;
+  return `done:${toolName}`;
+}
+
+function applyThinkingLevelCommandResult(): void {
+  if (!pendingThinkingLevel) return;
+  const requested = pendingThinkingLevel;
+  pendingThinkingLevel = "";
+  const resolved = lastRpcThinkingLevel || requested;
+  if (thinkingLevelSelect.value !== resolved) {
+    thinkingLevelSelect.value = resolved;
+  }
+  if (resolved !== requested) {
+    appendInlineNote(
+      `当前模型暂不支持${formatThinkingLevelLabel(requested)}，已保持${formatThinkingLevelLabel(resolved)}`,
+    );
+  }
+}
+
+function applyModelCommandResult(): void {
+  if (!pendingModelValue) return;
+  const requested = pendingModelValue;
+  pendingModelValue = "";
+  currentModelValue = lastRpcModelValue || currentModelValue;
+  renderModelSelect();
+  if (currentModelValue && currentModelValue !== requested) {
+    appendInlineNote(`模型切换未生效，当前仍为 ${currentModelValue}`);
+  }
+}
+
+function readToolArgsFromEvent(event: Record<string, unknown>): string | undefined {
+  const message = asRecord(event.message);
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  return readToolArgsFromContent(message?.content) ?? readToolArgsFromContent(partial?.content);
+}
+
+function readToolArgsFromExecutionEvent(event: Record<string, unknown>): string | undefined {
+  if (event.args && typeof event.args === "object") return stringifyJson(event.args);
+  return undefined;
+}
+
+function readToolCallIdFromEvent(event: Record<string, unknown>): string | undefined {
+  const directFromEvent = readString(event.toolCallId);
+  if (directFromEvent) return directFromEvent;
+  const message = asRecord(event.message);
+  const direct = readString(message?.toolCallId);
+  if (direct) return direct;
+  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const fromPartial = readString(partial?.toolCallId);
+  if (fromPartial) return fromPartial;
+  return readToolCallIdFromContent(message?.content) ?? readToolCallIdFromContent(partial?.content);
+}
+
+function readToolCallIdFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const item of content) {
+    const entry = asRecord(item);
+    if (!entry || readString(entry.type) !== "toolCall") continue;
+    const id = readString(entry.id);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+function readToolArgsFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const item of content) {
+    const entry = asRecord(item);
+    if (!entry || readString(entry.type) !== "toolCall") continue;
+    const args = readString(entry.args) ?? readString(entry.partialArgs);
+    if (args) return args;
+    if (entry.args && typeof entry.args === "object") return stringifyJson(entry.args);
+  }
+  return undefined;
+}
+
+function summarizeToolLabel(
+  toolName: string,
+  argsText: string | undefined,
+  outputText?: string,
+): string {
+  const path = readNamedArg(argsText, "path") ?? readNamedArg(argsText, "filePath");
+  const workdir =
+    readNamedArg(argsText, "cwd") ??
+    readNamedArg(argsText, "workdir") ??
+    readNamedArg(argsText, "workingDirectory");
+  const command = readNamedArg(argsText, "cmd") ?? readNamedArg(argsText, "command");
+  const query =
+    readNamedArg(argsText, "q") ??
+    readNamedArg(argsText, "query") ??
+    readNamedArg(argsText, "pattern");
+
+  if (toolName === "read") return path ? `读取：${truncateText(path, 72)}` : "读取文件";
+  if (toolName === "apply_patch") return "apply_patch";
+  if (toolName === "exec_command") {
+    if (workdir) return `bash：${truncateText(workdir, 72)}`;
+    if (command) return `bash：${truncateText(command, 72)}`;
+    const firstLine = readFirstNonEmptyLine(outputText);
+    if (firstLine) return `bash：${truncateText(firstLine, 72)}`;
+    return "bash";
+  }
+  if (toolName === "rg" || toolName === "grep" || toolName === "search") {
+    return query ? `搜索：${truncateText(query, 72)}` : "搜索代码";
+  }
+  if (toolName === "open") return path ? `打开：${truncateText(path, 72)}` : "打开内容";
+  if (toolName.includes("write") || toolName.includes("edit")) {
+    return path ? `修改：${truncateText(path, 72)}` : `修改内容（${toolName}）`;
+  }
+  return toolName;
+}
+
+function summarizeToolDetailSummary(toolName: string, argsText: string | undefined): string {
+  if (toolName === "exec_command") {
+    const command = readNamedArg(argsText, "cmd") ?? readNamedArg(argsText, "command");
+    return command ? `查看 ${command} 参数` : "查看命令参数";
+  }
+  return "查看参数";
+}
+
+function summarizeToolResultDetailSummary(toolName: string, output: string): string {
+  if (toolName === "exec_command") return "查看命令输出";
+  if (!output.trim()) return "查看结果";
+  return "查看详情";
+}
+
+function readNamedArg(argsText: string | undefined, name: string): string | undefined {
+  if (!argsText) return undefined;
+  const matcher = new RegExp(`"${name}"\\s*:\\s*"([^"]+)"`);
+  const quoted = argsText.match(matcher)?.[1];
+  if (quoted) return quoted;
+  const plain = argsText.match(new RegExp(`"${name}"\\s*:\\s*([^,}\\]]+)`))?.[1]?.trim();
+  return plain?.replace(/^"|"$/g, "");
+}
+
+function resolveToolFamily(toolName: string): string {
+  if (toolName === "exec_command") return "command";
+  if (toolName.startsWith("codegraph_")) return "codegraph";
+  if (
+    toolName === "search_query" ||
+    toolName === "image_query" ||
+    toolName === "open" ||
+    toolName === "click" ||
+    toolName === "find"
+  ) {
+    return "web";
+  }
+  return "tool";
+}
+
+function readFirstNonEmptyLine(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+}
+
+function rememberToolActivityGroup(event: Record<string, unknown>, groupKey: string): void {
+  const toolCallId = readToolCallIdFromEvent(event);
+  if (!toolCallId) return;
+  activityGroupByToolCallId.set(toolCallId, groupKey);
+}
+
+function rememberToolArgs(event: Record<string, unknown>, toolArgs: string | undefined): void {
+  if (!toolArgs) return;
+  const toolCallId = readToolCallIdFromEvent(event);
+  if (!toolCallId) return;
+  toolArgsByToolCallId.set(toolCallId, toolArgs);
+}
+
+function readStoredToolArgs(message: Record<string, unknown> | undefined): string | undefined {
+  const toolCallId = readString(message?.toolCallId);
+  if (!toolCallId) return undefined;
+  return toolArgsByToolCallId.get(toolCallId);
+}
+
+function resolveToolActivityGroupKey(event: Record<string, unknown>): string {
+  const toolCallId = readToolCallIdFromEvent(event);
+  if (toolCallId) {
+    const mappedKey = activityGroupByToolCallId.get(toolCallId);
+    if (mappedKey) return mappedKey;
+  }
+  return resolveAssistantActivityGroupKey(event);
+}
+
+function resolveThinkingActivityGroupKey(event: Record<string, unknown>): string {
+  const responseId = readResponseId(event);
+  if (!responseId) return ACTIVE_THINKING_ACTIVITY_KEY;
+  const key = `assistant-thinking:${responseId}`;
+  activityTranscript.renameGroup(ACTIVE_THINKING_ACTIVITY_KEY, key);
+  return key;
+}
+
+function resolveThinkingEntryKey(event: Record<string, unknown>): string {
+  const responseId = readResponseId(event);
+  return responseId ? `${responseId}:thinking` : "live:thinking";
+}
+
+function extractToolExecutionText(event: Record<string, unknown>): string | undefined {
+  const partialResult = asRecord(event.partialResult);
+  const result = asRecord(event.result);
+  const partialText = extractMessageText(partialResult);
+  if (partialText) return partialText;
+  const resultText = extractMessageText(result);
+  return resultText || undefined;
+}
+
+function formatThinkingLevelLabel(level: string): string {
+  if (level === "off") return "关闭";
+  if (level === "minimal") return "极低";
+  if (level === "low") return "低";
+  if (level === "medium") return "中";
+  if (level === "high") return "高";
+  if (level === "xhigh") return "超高";
+  return level;
+}
+
+function promoteMessageKey(key: string, fallbackKeys: string[]): void {
+  if (messagesByKey.has(key)) return;
+  for (const fallbackKey of fallbackKeys) {
+    if (fallbackKey === key) continue;
+    const state = messagesByKey.get(fallbackKey);
+    if (!state) continue;
+    messagesByKey.set(key, state);
+    messagesByKey.delete(fallbackKey);
+
+    const text = messageTextByKey.get(fallbackKey);
+    if (text !== undefined) {
+      messageTextByKey.set(key, text);
+      messageTextByKey.delete(fallbackKey);
+    }
+    return;
+  }
 }
 
 function sendPrompt(): void {
