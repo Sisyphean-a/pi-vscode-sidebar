@@ -31,53 +31,214 @@ textarea {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 10px 14px 8px;
 }
 
 .topbar {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 4px 4px 18px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--vscode-sideBar-border, var(--vscode-panel-border)) 62%, transparent);
+}
+
+.topbar-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--vscode-sideBar-border, var(--vscode-panel-border));
+  gap: 10px;
 }
 
 .topbar-main {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .topbar h1 {
   margin: 0;
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 600;
   color: var(--vscode-sideBarTitle-foreground, var(--vscode-sideBar-foreground));
+  letter-spacing: 0.01em;
 }
 
 .topbar-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+
+.icon-action {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 10px;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: transparent;
+  cursor: pointer;
+}
+
+.icon-action:hover {
+  background: color-mix(
+    in srgb,
+    var(--vscode-button-secondaryBackground, var(--vscode-button-background)) 68%,
+    transparent
+  );
+}
+
+.recent-sessions {
+  display: grid;
+  gap: 4px;
+}
+
+.recent-sessions-stream {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.recent-sessions-preview,
+.recent-sessions-dialog-list {
+  display: grid;
+  gap: 2px;
+}
+
+.recent-session-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: none;
+  border-radius: 10px;
+  padding: 4px 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.recent-session-item:hover {
+  background: transparent;
+}
+
+.recent-session-item.is-active {
+  background: transparent;
+}
+
+.recent-session-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(
+    in srgb,
+    var(--vscode-sideBar-foreground) 88%,
+    var(--vscode-descriptionForeground)
+  );
+}
+
+.recent-session-item.is-active .recent-session-item-title {
+  font-weight: 600;
+  color: var(--vscode-sideBar-foreground);
+}
+
+.recent-session-item-time {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.recent-sessions-more {
+  justify-self: start;
+  border: none;
+  padding: 0;
+  color: var(--vscode-descriptionForeground);
+  background: transparent;
+  cursor: pointer;
+}
+
+.recent-sessions-link {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.recent-sessions-more:hover {
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 72%,
+    var(--vscode-sideBar-foreground)
+  );
+}
+
+.recent-sessions-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: start center;
+  padding: 24px 12px 12px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 20%, transparent);
+}
+
+.recent-sessions-dialog {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-panel-border, var(--vscode-sideBar-border)) 70%, transparent);
+  border-radius: 16px;
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.recent-sessions-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recent-sessions-dialog-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.recent-sessions-dialog-list {
+  max-height: 352px;
+  overflow: auto;
 }
 
 .text-action,
 .send-action {
   border: 1px solid transparent;
-  border-radius: 6px;
-  min-height: 26px;
-  padding: 0 9px;
+  border-radius: 12px;
+  min-height: 38px;
+  padding: 0 16px;
   color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+  background: color-mix(
+    in srgb,
+    var(--vscode-button-secondaryBackground, var(--vscode-button-background)) 88%,
+    transparent
+  );
   cursor: pointer;
+  font-weight: 500;
 }
 
 .text-action:hover,
 .send-action:hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+  background: color-mix(
+    in srgb,
+    var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)) 90%,
+    transparent
+  );
 }
 
 .send-action {
@@ -95,6 +256,7 @@ textarea {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 8px;
+  padding-bottom: 10px;
 }
 
 .message-feed {
@@ -104,6 +266,7 @@ textarea {
   flex-direction: column;
   align-items: stretch;
   gap: 14px;
+  padding-bottom: 10px;
   padding-right: 2px;
 }
 

@@ -11,6 +11,7 @@ import {
   findPiBinary,
   resolvePiRuntime,
 } from "./pi/runtime.ts";
+import { createRecentSessionsProvider } from "./session/recent-sessions.ts";
 import { createSessionTracker } from "./session/tracker.ts";
 import { createSidebarViewProvider } from "./view/provider.ts";
 
@@ -18,6 +19,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const processManager = createPiRpcProcessManager();
   const logger = setupTraceLogging(context, processManager);
   const tracker = createSessionTracker(context);
+  const recentSessions = createRecentSessionsProvider({
+    workspaceDir: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+  });
   await tracker.pruneMissingSessions();
   const restoreState = createRestoreState(tracker);
 
@@ -39,6 +43,7 @@ export async function activate(context: vscode.ExtensionContext) {
     stateStore: createRpcSessionStateStore(),
     ensureStarted,
     logger,
+    listRecentSessions: () => recentSessions.list(),
     onRpcState: async (state) => {
       if (!state.sessionId || !state.sessionFile) return;
       restoreState.pendingSession = state.sessionFile;

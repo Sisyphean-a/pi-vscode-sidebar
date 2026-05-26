@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSidebarController } from "../../../src/host/controller.ts";
 import type { ProcessEvent } from "../../../src/host/process-manager.ts";
+import type { RecentSessionSummary } from "../../../src/shared/recent-sessions.ts";
 
 function createHarness(options?: {
   phase?: "idle" | "streaming" | "awaiting_extension_ui" | "process_dead";
   extensionUiTimeoutMs?: number;
+  recentSessions?: RecentSessionSummary[];
 }) {
   const emitted: unknown[] = [];
   let listener: ((event: ProcessEvent) => void) | undefined;
@@ -75,6 +77,9 @@ function createHarness(options?: {
       ensureStartedCalls += 1;
     },
     extensionUiTimeoutMs: options?.extensionUiTimeoutMs,
+    async listRecentSessions() {
+      return options?.recentSessions ?? [];
+    },
   });
 
   controller.connect((message) => {
@@ -225,6 +230,40 @@ describe("SidebarController", () => {
             ?.replace === true,
       ),
     ).toBe(true);
+  });
+
+  it("includes recent session summaries in state payloads", async () => {
+    const harness = createHarness({
+      recentSessions: [
+        {
+          sessionId: "session-2",
+          sessionPath: "C:\\sessions\\session-2.jsonl",
+          title: "修复最近任务列表",
+          updatedAt: "2026-05-26T02:30:00.000Z",
+        },
+      ],
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "ui_ready",
+      correlationId: "ui-ready-recent",
+    });
+
+    const stateMessage = [...harness.emitted]
+      .reverse()
+      .find(
+        (item) =>
+          typeof item === "object" && !!item && (item as { type?: string }).type === "state",
+      ) as { data?: { recentSessions?: RecentSessionSummary[] } } | undefined;
+
+    expect(stateMessage?.data?.recentSessions).toEqual([
+      {
+        sessionId: "session-2",
+        sessionPath: "C:\\sessions\\session-2.jsonl",
+        title: "修复最近任务列表",
+        updatedAt: "2026-05-26T02:30:00.000Z",
+      },
+    ]);
   });
 
   it("replays session messages after switch_session command", async () => {

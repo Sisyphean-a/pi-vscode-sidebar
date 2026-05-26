@@ -2,6 +2,7 @@ import type { RpcClient } from "./rpc-client.ts";
 import type { PiRpcProcessManager, ProcessEvent } from "./process-manager.ts";
 import type { RpcSessionStateStore } from "./state-store.ts";
 import type { HostToUiMessage, UiToHostMessage } from "../view/protocol.ts";
+import type { RecentSessionSummary } from "../shared/recent-sessions.ts";
 import type { RpcCommand, RpcExtensionUIResponse, RpcSessionState } from "../shared/rpc-types.ts";
 import type { Logger } from "./logger.ts";
 
@@ -16,6 +17,7 @@ export interface SidebarControllerOptions {
   rpcClient: RpcClient;
   stateStore: RpcSessionStateStore;
   ensureStarted(): Promise<void>;
+  listRecentSessions?(): Promise<RecentSessionSummary[]>;
   onRpcState?(state: RpcSessionState): Promise<void> | void;
   extensionUiTimeoutMs?: number;
   logger?: Logger;
@@ -42,7 +44,9 @@ class SidebarControllerImpl implements SidebarController {
 
   connect(sink: (message: HostToUiMessage) => void): () => void {
     this.sink = sink;
-    void this.syncState();
+    void this.syncState().catch((error) => {
+      this.reportBackgroundSyncFailure(error);
+    });
     return () => {
       if (this.sink === sink) this.sink = undefined;
     };
@@ -264,11 +268,13 @@ class SidebarControllerImpl implements SidebarController {
   private async syncState(): Promise<void> {
     const rpcState = await this.options.rpcClient.getState().catch(() => undefined);
     if (rpcState) await this.options.onRpcState?.(rpcState);
+    const recentSessions = await this.options.listRecentSessions?.();
     this.emit({
       type: "state",
       data: {
         view: this.options.stateStore.snapshot(),
         rpc: rpcState,
+        recentSessions,
       },
     });
   }
@@ -284,6 +290,20 @@ class SidebarControllerImpl implements SidebarController {
 
   private emit(message: HostToUiMessage): void {
     this.sink?.(message);
+  }
+
+  private reportBackgroundSyncFailure(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.options.logger?.error({
+      scope: "controller",
+      message: "failed to sync sidebar state",
+      details: { error: message },
+    });
+    this.emit({
+      type: "error",
+      scope: "ui",
+      message: `同步侧边栏状态失败：${message}`,
+    });
   }
 
   private reportCommandFailure(

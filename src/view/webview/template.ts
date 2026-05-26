@@ -1,14 +1,30 @@
 export const SIDEBAR_TEMPLATE = `
   <main class="app-shell">
     <header class="topbar">
-      <div class="topbar-main">
-        <h1 id="title">未连接Pi</h1>
+      <div class="topbar-row">
+        <div class="topbar-main">
+          <h1 id="title">未连接Pi</h1>
+        </div>
+        <div class="topbar-actions">
+          <button id="new-session-button" type="button" class="text-action" title="新建会话">新对话</button>
+          <button id="abort-button" type="button" class="text-action" title="停止生成">停止</button>
+          <button id="reconnect-button" type="button" class="text-action hidden" title="重新连接">重连</button>
+        </div>
       </div>
-      <div class="topbar-actions">
-        <button id="new-session-button" type="button" class="text-action" title="新建会话">新对话</button>
-        <button id="abort-button" type="button" class="text-action" title="停止生成">停止</button>
-        <button id="reconnect-button" type="button" class="text-action hidden" title="重新连接">重连</button>
-      </div>
+      <section
+        id="recent-sessions-section"
+        class="recent-sessions recent-sessions-stream hidden"
+        aria-label="最近任务"
+      >
+        <div id="recent-sessions-preview" class="recent-sessions-preview"></div>
+        <button
+          id="recent-sessions-more-button"
+          type="button"
+          class="recent-sessions-more recent-sessions-link hidden"
+        >
+          查看全部
+        </button>
+      </section>
     </header>
 
     <section class="conversation">
@@ -40,5 +56,23 @@ export const SIDEBAR_TEMPLATE = `
         </div>
       </div>
     </footer>
+
+    <div id="recent-sessions-overlay" class="recent-sessions-overlay hidden">
+      <section
+        id="recent-sessions-dialog"
+        class="recent-sessions-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="recent-sessions-dialog-title"
+      >
+        <div class="recent-sessions-dialog-header">
+          <h2 id="recent-sessions-dialog-title">全部任务</h2>
+          <button id="recent-sessions-dialog-close" type="button" class="icon-action" title="关闭">
+            关闭
+          </button>
+        </div>
+        <div id="recent-sessions-dialog-list" class="recent-sessions-dialog-list"></div>
+      </section>
+    </div>
   </main>
 `;

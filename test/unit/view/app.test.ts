@@ -314,6 +314,131 @@ describe("sidebar webview app", () => {
     expect(document.getElementById("thinking-level-button")).toBeNull();
   });
 
+  it("renders recent session preview, opens the full dialog, and switches sessions on click", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { sessionFile: "C:\\sessions\\session-2.jsonl" },
+            recentSessions: [
+              {
+                sessionId: "session-1",
+                sessionPath: "C:\\sessions\\session-1.jsonl",
+                title: "给底部选择器加动画",
+                updatedAt: "2026-05-26T02:59:00.000Z",
+              },
+              {
+                sessionId: "session-2",
+                sessionPath: "C:\\sessions\\session-2.jsonl",
+                title: "优化侧边栏消息与工具展示",
+                updatedAt: "2026-05-26T02:52:00.000Z",
+              },
+              {
+                sessionId: "session-3",
+                sessionPath: "C:\\sessions\\session-3.jsonl",
+                title: "当前项目，是否有很多无意义的测试？",
+                updatedAt: "2026-05-26T02:03:00.000Z",
+              },
+              {
+                sessionId: "session-4",
+                sessionPath: "C:\\sessions\\session-4.jsonl",
+                title: "帮我按照这个规范，重构现有的两个页面",
+                updatedAt: "2026-05-25T18:03:00.000Z",
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const previewItems = document.querySelectorAll("#recent-sessions-preview .recent-session-item");
+    const moreButton = document.getElementById(
+      "recent-sessions-more-button",
+    ) as HTMLButtonElement | null;
+    expect(previewItems).toHaveLength(3);
+    expect(previewItems[1]?.classList.contains("is-active")).toBe(true);
+    expect(moreButton?.textContent).toContain("查看全部（4 个）");
+
+    moreButton?.click();
+    await waitForFlush();
+
+    const dialog = document.getElementById("recent-sessions-overlay");
+    const dialogItems = document.querySelectorAll(
+      "#recent-sessions-dialog-list .recent-session-item",
+    );
+    expect(dialog?.classList.contains("hidden")).toBe(false);
+    expect(dialogItems).toHaveLength(4);
+
+    (dialogItems[3] as HTMLButtonElement | undefined)?.click();
+    await waitForFlush();
+
+    expect(dialog?.classList.contains("hidden")).toBe(true);
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string; sessionPath?: string }).type === "switch_session" &&
+          (message as { type?: string; sessionPath?: string }).sessionPath ===
+            "C:\\sessions\\session-4.jsonl",
+      ),
+    ).toBe(true);
+  });
+
+  it("uses a compact codex-like recent task layout without a redundant section label", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: {},
+            recentSessions: [
+              {
+                sessionId: "session-1",
+                sessionPath: "C:\\sessions\\session-1.jsonl",
+                title: "统一 SVG 图标导出",
+                updatedAt: "2026-05-26T02:59:00.000Z",
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const section = document.getElementById("recent-sessions-section");
+    const moreButton = document.getElementById("recent-sessions-more-button");
+
+    expect(section?.classList.contains("recent-sessions-stream")).toBe(true);
+    expect(document.querySelector(".recent-sessions-label")).toBeNull();
+    expect(moreButton?.classList.contains("recent-sessions-link")).toBe(true);
+  });
+
   it("shows a clamp notice when backend keeps a different thinking level", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }

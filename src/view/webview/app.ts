@@ -2,6 +2,8 @@ import { createActivityTranscript } from "./activity-transcript.ts";
 import { resetComposerHeight, syncComposerHeight } from "./composer.ts";
 import { createExtensionUiRenderer } from "./extension-ui.ts";
 import { renderAssistantMarkdown, renderPlainTextWithReferences } from "./markdown.ts";
+import { createRecentSessionsPanel } from "./recent-sessions.ts";
+import type { RecentSessionSummary } from "../../shared/recent-sessions.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
 import { asRecord, readString, stringifyJson, truncateText } from "./ui-text.ts";
@@ -56,6 +58,18 @@ const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-
 const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
 const messageFeed = expectElement<HTMLElement>("message-feed");
+const recentSessionsPanel = createRecentSessionsPanel({
+  section: expectElement<HTMLElement>("recent-sessions-section"),
+  preview: expectElement<HTMLElement>("recent-sessions-preview"),
+  moreButton: expectElement<HTMLButtonElement>("recent-sessions-more-button"),
+  overlay: expectElement<HTMLElement>("recent-sessions-overlay"),
+  dialogTitle: expectElement<HTMLElement>("recent-sessions-dialog-title"),
+  dialogList: expectElement<HTMLElement>("recent-sessions-dialog-list"),
+  closeButton: expectElement<HTMLButtonElement>("recent-sessions-dialog-close"),
+  onSelect(sessionPath) {
+    postUiMessage({ type: "switch_session", sessionPath });
+  },
+});
 const messagesByKey = new Map<string, ChatMessageRefs>();
 const messageTextByKey = new Map<string, string>();
 const activityTranscript = createActivityTranscript({
@@ -222,6 +236,12 @@ function updateState(data: Record<string, unknown>): void {
   reconnectButton.classList.toggle("hidden", phase !== "process_dead");
   syncModelSelection(rpc);
   syncThinkingLevel(rpc);
+  if (Array.isArray(data.recentSessions)) {
+    recentSessionsPanel.update(
+      data.recentSessions as RecentSessionSummary[],
+      readString(rpc?.sessionFile),
+    );
+  }
   if (!modelOptionsLoaded) requestAvailableModels();
 }
 
