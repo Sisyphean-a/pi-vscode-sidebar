@@ -37,7 +37,6 @@ export function createExtensionUiRenderer(options: ExtensionUiRendererOptions) {
       return;
     }
     if (method === "notify") {
-      options.panel.classList.remove("hidden");
       renderNotifyUi(options, data);
       return;
     }
@@ -63,20 +62,11 @@ export function createExtensionUiRenderer(options: ExtensionUiRendererOptions) {
 
 function renderNotifyUi(options: ExtensionUiRendererOptions, data: Record<string, unknown>): void {
   const message = readString(data.message) ?? "收到通知。";
-  const level = readString(data.level) ?? readString(data.type) ?? "info";
+  const level = readString(data.notifyType) ?? readString(data.level) ?? "info";
   const levelLabel = mapNoticeLevel(level);
   options.queueNotice(`[${levelLabel}] ${message}`);
-  options.panel.innerHTML = `
-    <h2>通知</h2>
-    <p>${options.escapeHtml(message)}</p>
-    <p><small>级别：${options.escapeHtml(levelLabel)}</small></p>
-    <div class="line">
-      <button id="ext-dismiss" type="button">关闭</button>
-    </div>
-  `;
-  options.expectElement<HTMLButtonElement>("ext-dismiss").addEventListener("click", () => {
-    options.panel.classList.add("hidden");
-  });
+  options.panel.replaceChildren();
+  options.panel.classList.add("hidden");
 }
 
 function applyStatusUpdate(

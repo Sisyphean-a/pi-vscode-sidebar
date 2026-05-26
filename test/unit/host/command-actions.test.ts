@@ -193,4 +193,37 @@ describe("sidebar command actions", () => {
       entryId: "node-1",
     });
   });
+
+  it("routes dynamic slash commands through prompt after loading get_commands", async () => {
+    const harness = createHarness({
+      get_commands: {
+        commands: [
+          {
+            name: "cg-status",
+            description: "Show CodeGraph status",
+            source: "extension",
+            sourceInfo: {
+              path: "E:\\github\\pi\\.pi\\extensions\\codegraph.ts",
+              source: "local",
+              scope: "user",
+              origin: "top-level",
+            },
+          },
+        ],
+      },
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "cg-status",
+      rawInput: "/cg-status",
+    });
+
+    expect(harness.sentCommands).toContainEqual({ type: "get_commands" });
+    expect(harness.sentCommands).toContainEqual({
+      type: "prompt",
+      message: "/cg-status",
+      images: undefined,
+    });
+  });
 });

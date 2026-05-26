@@ -11,9 +11,11 @@ import type {
   UiToHostMessage,
 } from "../view/protocol.ts";
 import type { RecentSessionSummary } from "../shared/recent-sessions.ts";
+import { findBuiltinSidebarCommand } from "../shared/sidebar-commands.ts";
 import type {
   RpcCommand,
   RpcExtensionUIResponse,
+  RpcSlashCommand,
   RpcSessionState,
   RpcSessionTreeNode,
 } from "../shared/rpc-types.ts";
@@ -52,6 +54,8 @@ class SidebarControllerImpl implements SidebarController {
   private sink: ((message: HostToUiMessage) => void) | undefined;
   private readonly unsubscribe: () => void;
   private readonly extensionUiTimeoutMs: number;
+  private hasLoadedSlashCommands = false;
+  private readonly availableSlashCommands = new Map<string, RpcSlashCommand>();
   private readonly pendingExtensionUiRequests = new Map<string, NodeJS.Timeout>();
   private readonly pendingCommandUiRequests = new Map<string, PendingCommandUiRequest>();
 
@@ -159,6 +163,7 @@ class SidebarControllerImpl implements SidebarController {
 
     if (await this.runDirectSidebarCommand(parsed, correlationId)) return;
     if (await this.openSidebarCommandUi(parsed, correlationId)) return;
+    if (await this.runDynamicSidebarCommand(parsed, correlationId)) return;
 
     this.emitCommandResult({
       status: "error",
@@ -209,6 +214,18 @@ class SidebarControllerImpl implements SidebarController {
       return true;
     }
     return false;
+  }
+
+  private async runDynamicSidebarCommand(
+    parsed: ReturnType<typeof parseSidebarCommand>,
+    correlationId: string | undefined,
+  ): Promise<boolean> {
+    if (!parsed) return false;
+    if (findBuiltinSidebarCommand(parsed.name)) return false;
+    const command = await this.findDynamicSlashCommand(parsed.name, correlationId);
+    if (!command) return false;
+    await this.onPromptSlashCommand(parsed.rawInput, correlationId);
+    return true;
   }
 
   private async openSidebarCommandUi(
@@ -451,6 +468,7 @@ class SidebarControllerImpl implements SidebarController {
     await this.options.ensureStarted();
     await this.syncState();
     await this.replayMessages(correlationId, true);
+    await this.refreshAvailableSlashCommands(correlationId, true);
   }
 
   private async onRpcQuery(command: RpcCommand, correlationId: string | undefined): Promise<void> {
@@ -483,6 +501,53 @@ class SidebarControllerImpl implements SidebarController {
         replace,
       },
     });
+  }
+
+  private async onPromptSlashCommand(
+    rawInput: string,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    await this.options.ensureStarted();
+    const response = await this.options.rpcClient.send(
+      withCommandId({ type: "prompt", message: rawInput }, correlationId),
+    );
+    this.reportCommandFailure(response, correlationId);
+    if (response.success) {
+      await this.syncState();
+    }
+  }
+
+  private async findDynamicSlashCommand(
+    name: string,
+    correlationId: string | undefined,
+  ): Promise<RpcSlashCommand | undefined> {
+    if (!this.availableSlashCommands.has(name) || !this.hasLoadedSlashCommands) {
+      await this.refreshAvailableSlashCommands(correlationId, false);
+    }
+    return this.availableSlashCommands.get(name);
+  }
+
+  private async refreshAvailableSlashCommands(
+    correlationId: string | undefined,
+    emitEvent: boolean,
+  ): Promise<void> {
+    const response = await this.sendRpcCommand({ type: "get_commands" }, correlationId);
+    this.reportCommandFailure(response, correlationId);
+    if (!response.success) return;
+    this.storeAvailableSlashCommands(readSlashCommands(response.data));
+    if (!emitEvent) return;
+    this.emit({
+      type: "event",
+      data: { type: "query_result", command: "get_commands", data: response.data, correlationId },
+    });
+  }
+
+  private storeAvailableSlashCommands(commands: RpcSlashCommand[]): void {
+    this.availableSlashCommands.clear();
+    for (const command of commands) {
+      this.availableSlashCommands.set(command.name, command);
+    }
+    this.hasLoadedSlashCommands = true;
   }
 
   private async onExtensionUiResponse(requestId: string, payload: unknown): Promise<void> {
@@ -801,6 +866,21 @@ function readTreeCommandUiItems(data: unknown): CommandUiItem[] {
     active: node.isActive,
     payload: { selectedId: node.entryId },
   }));
+}
+
+function readSlashCommands(data: unknown): RpcSlashCommand[] {
+  const commands = (data as { commands?: unknown } | undefined)?.commands;
+  if (!Array.isArray(commands)) return [];
+  return commands.filter((command): command is RpcSlashCommand => {
+    if (!command || typeof command !== "object" || Array.isArray(command)) return false;
+    const record = command as Record<string, unknown>;
+    return (
+      typeof record.name === "string" &&
+      typeof record.source === "string" &&
+      typeof record.sourceInfo === "object" &&
+      record.sourceInfo !== null
+    );
+  });
 }
 
 function readLastAssistantText(data: unknown): string | undefined {

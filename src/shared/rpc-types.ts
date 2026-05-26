@@ -1,5 +1,23 @@
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
+export type RpcCommandScope = "user" | "project" | "temporary";
+export type RpcCommandSource = "extension" | "prompt" | "skill";
+
+export interface RpcSourceInfo {
+  path: string;
+  source: string;
+  scope: RpcCommandScope;
+  origin: string;
+  baseDir?: string;
+}
+
+export interface RpcSlashCommand {
+  name: string;
+  description?: string;
+  source: RpcCommandSource;
+  sourceInfo: RpcSourceInfo;
+}
+
 export type RpcCommand =
   | { id?: string; type: "prompt"; message: string; images?: Array<{ path: string }> }
   | { id?: string; type: "steer"; message: string }
@@ -19,6 +37,7 @@ export type RpcCommand =
   | { id?: string; type: "fork"; entryId: string }
   | { id?: string; type: "get_fork_messages" }
   | { id?: string; type: "get_last_assistant_text" }
+  | { id?: string; type: "get_commands" }
   | { id?: string; type: "get_session_tree" }
   | { id?: string; type: "navigate_session_tree"; entryId: string }
   | { id?: string; type: "set_session_name"; name: string };

@@ -7,6 +7,8 @@ import { createExtensionUiRenderer } from "./extension-ui.ts";
 import { renderAssistantMarkdown, renderPlainTextWithReferences } from "./markdown.ts";
 import { createRecentSessionsPanel } from "./recent-sessions.ts";
 import type { RecentSessionSummary } from "../../shared/recent-sessions.ts";
+import { mapRpcSlashCommands } from "../../shared/sidebar-commands.ts";
+import type { RpcSlashCommand } from "../../shared/rpc-types.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
 import {
@@ -594,6 +596,10 @@ function mergeMessageText(previous: string, incoming: string): string {
 
 function applyQueryResultEvent(event: Record<string, unknown>): void {
   const command = readString(event.command);
+  if (command === "get_commands") {
+    applyAvailableCommandsQueryResult(event);
+    return;
+  }
   if (command === "get_available_models") {
     applyAvailableModelsQueryResult(event);
     return;
@@ -630,6 +636,13 @@ function applyQueryResultEvent(event: Record<string, unknown>): void {
   syncRecentSessionsVisibility();
 }
 
+function applyAvailableCommandsQueryResult(event: Record<string, unknown>): void {
+  const commands = extractSlashCommands(event.data);
+  if (!commands) return;
+  commandPalette.setDynamicCommands(mapRpcSlashCommands(commands));
+  commandPalette.update(promptInput.value);
+}
+
 function extractMessageArray(payload: unknown): unknown[] | undefined {
   if (Array.isArray(payload)) return payload;
   const record = asRecord(payload);
@@ -638,6 +651,15 @@ function extractMessageArray(payload: unknown): unknown[] | undefined {
   const nestedData = asRecord(record.data);
   if (Array.isArray(nestedData?.messages)) return nestedData.messages;
   return undefined;
+}
+
+function extractSlashCommands(payload: unknown): RpcSlashCommand[] | undefined {
+  const record = asRecord(payload);
+  if (!record || !Array.isArray(record.commands)) return undefined;
+  return record.commands.filter((command): command is RpcSlashCommand => {
+    const item = asRecord(command);
+    return !!item && typeof item.name === "string" && typeof item.source === "string";
+  });
 }
 
 function hydrateHistoryMessage(message: Record<string, unknown>, index: number): void {

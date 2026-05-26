@@ -3,18 +3,18 @@ import { describe, expect, it } from "vitest";
 import { createExtensionUiRenderer } from "../../../src/view/webview/extension-ui.ts";
 
 describe("extension ui renderer", () => {
-  it("renders notify card and emits notice event", () => {
+  it("treats notify as inline notice and reads notifyType level", () => {
     const harness = createHarness();
 
     harness.render({
       id: "req-notify",
       method: "notify",
-      level: "warning",
+      notifyType: "warning",
       message: "Bridge disconnected",
     });
 
-    expect(harness.panel.classList.contains("hidden")).toBe(false);
-    expect(harness.panel.textContent).toContain("Bridge disconnected");
+    expect(harness.panel.classList.contains("hidden")).toBe(true);
+    expect(harness.panel.textContent).toBe("");
     expect(harness.notices).toEqual(["[警告] Bridge disconnected"]);
     expect(harness.responses).toEqual([]);
   });

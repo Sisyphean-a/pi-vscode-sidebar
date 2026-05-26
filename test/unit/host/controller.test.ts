@@ -220,8 +220,9 @@ describe("SidebarController", () => {
       correlationId: "ui-ready-1",
     });
 
-    expect(harness.getEnsureStartedCalls()).toBe(1);
+    expect(harness.getEnsureStartedCalls()).toBe(2);
     expect(harness.sentCommands).toContainEqual({ type: "get_messages", id: "ui-ready-1" });
+    expect(harness.sentCommands).toContainEqual({ type: "get_commands", id: "ui-ready-1" });
     expect(
       harness.emitted.some(
         (item) =>
@@ -234,6 +235,45 @@ describe("SidebarController", () => {
             ?.command === "get_messages" &&
           (item as { data?: { type?: string; command?: string; replace?: boolean } }).data
             ?.replace === true,
+      ),
+    ).toBe(true);
+  });
+
+  it("loads available slash commands when ui becomes ready", async () => {
+    const harness = createHarness({
+      commandData: {
+        get_commands: {
+          commands: [
+            {
+              name: "cg-status",
+              description: "Show CodeGraph status",
+              source: "extension",
+              sourceInfo: {
+                path: "E:\\github\\pi\\.pi\\extensions\\codegraph.ts",
+                source: "local",
+                scope: "user",
+                origin: "top-level",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "ui_ready",
+      correlationId: "ui-ready-commands",
+    });
+
+    expect(harness.sentCommands).toContainEqual({ type: "get_commands", id: "ui-ready-commands" });
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          !!item &&
+          (item as { type?: string }).type === "event" &&
+          (item as { data?: { type?: string; command?: string } }).data?.type === "query_result" &&
+          (item as { data?: { type?: string; command?: string } }).data?.command === "get_commands",
       ),
     ).toBe(true);
   });

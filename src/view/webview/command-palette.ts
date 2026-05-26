@@ -14,10 +14,12 @@ export interface CommandPalette {
   hide(): void;
   isVisible(): boolean;
   moveSelection(offset: number): boolean;
+  setDynamicCommands(commands: readonly SidebarCommandDefinition[]): void;
   update(value: string): void;
 }
 
 export function createCommandPalette(options: CommandPaletteOptions): CommandPalette {
+  let dynamicCommands: readonly SidebarCommandDefinition[] = [];
   let selectedIndex = 0;
   let visibleItems: SidebarCommandDefinition[] = [];
 
@@ -44,13 +46,16 @@ export function createCommandPalette(options: CommandPaletteOptions): CommandPal
       renderCommandPalette(options.list, visibleItems, selectedIndex, options.applyCommand);
       return true;
     },
+    setDynamicCommands(commands) {
+      dynamicCommands = [...commands];
+    },
     update(value) {
       const query = readCommandQuery(value);
       if (query === undefined) {
         this.hide();
         return;
       }
-      visibleItems = filterSidebarCommands(query);
+      visibleItems = filterSidebarCommands(query, dynamicCommands);
       selectedIndex = 0;
       renderCommandPalette(options.list, visibleItems, selectedIndex, options.applyCommand);
       options.panel.classList.toggle("hidden", visibleItems.length === 0);
@@ -79,7 +84,30 @@ function renderCommandPalette(
       row.type = "button";
       row.className = "command-palette-item";
       if (index === selectedIndex) row.classList.add("is-selected");
-      row.textContent = `/${item.name}`;
+      const primary = document.createElement("div");
+      primary.className = "command-palette-item-primary";
+
+      const name = document.createElement("span");
+      name.className = "command-palette-item-name";
+      name.textContent = item.name;
+      primary.append(name);
+
+      if (item.sourceBadge) {
+        const badge = document.createElement("span");
+        badge.className = "command-palette-item-badge";
+        badge.textContent = item.sourceBadge;
+        primary.append(badge);
+      }
+
+      row.append(primary);
+
+      if (item.description) {
+        const description = document.createElement("span");
+        description.className = "command-palette-item-description";
+        description.textContent = item.description;
+        row.append(description);
+      }
+
       row.addEventListener("click", () => {
         applyCommand(item.name);
       });
