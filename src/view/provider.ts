@@ -154,9 +154,10 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "src", "view", "webview", "styles.css"),
     );
+    const language = vscode.env.language || "en";
 
     return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${language}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

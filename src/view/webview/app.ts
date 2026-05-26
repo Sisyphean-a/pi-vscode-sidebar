@@ -7,7 +7,12 @@ import { createExtensionUiRenderer } from "./extension-ui.ts";
 import { renderAssistantMarkdown, renderPlainTextWithReferences } from "./markdown.ts";
 import { createRecentSessionsPanel } from "./recent-sessions.ts";
 import type { RecentSessionSummary } from "../../shared/recent-sessions.ts";
-import { mapRpcSlashCommands } from "../../shared/sidebar-commands.ts";
+import {
+  mapRpcSlashCommands,
+  resolveSidebarCommandId,
+  resolveSidebarLocale,
+  type SidebarCommandDefinition,
+} from "../../shared/sidebar-commands.ts";
 import type { RpcSlashCommand } from "../../shared/rpc-types.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
@@ -64,6 +69,7 @@ const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
 const messageFeed = expectElement<HTMLElement>("message-feed");
+const sidebarLocale = resolveSidebarLocale(document.documentElement.lang);
 const commandPalette = createCommandPalette({
   applyCommand(name) {
     promptInput.value = `/${name}`;
@@ -71,6 +77,7 @@ const commandPalette = createCommandPalette({
     promptInput.focus();
     commandPalette.update(promptInput.value);
   },
+  locale: sidebarLocale,
   panel: expectElement<HTMLElement>("command-palette-panel"),
   list: expectElement<HTMLElement>("command-palette-list"),
 });
@@ -158,6 +165,7 @@ let isStreamingPhase = false;
 let shouldAutoScroll = true;
 let hasResolvedConversationState = false;
 let currentSessionPath: string | undefined;
+let dynamicSlashCommands: SidebarCommandDefinition[] = [];
 
 resetComposerHeight(promptInput);
 renderSendButton();
@@ -639,7 +647,8 @@ function applyQueryResultEvent(event: Record<string, unknown>): void {
 function applyAvailableCommandsQueryResult(event: Record<string, unknown>): void {
   const commands = extractSlashCommands(event.data);
   if (!commands) return;
-  commandPalette.setDynamicCommands(mapRpcSlashCommands(commands));
+  dynamicSlashCommands = mapRpcSlashCommands(commands);
+  commandPalette.setDynamicCommands(dynamicSlashCommands);
   commandPalette.update(promptInput.value);
 }
 
@@ -1318,7 +1327,7 @@ function sendPrompt(): void {
 
 function submitCommand(): void {
   const rawInput = promptInput.value.trim();
-  const name = readCommandName(rawInput);
+  const name = resolveSidebarCommandId(rawInput, sidebarLocale, dynamicSlashCommands);
   if (!name) return;
   postUiMessage({ type: "run_command", name, rawInput });
   promptInput.value = "";
@@ -1510,14 +1519,5 @@ function nextLocalMessageKey(prefix: string): string {
 }
 
 function shouldSubmitCommand(value: string): boolean {
-  return !!readCommandName(value);
-}
-
-function readCommandName(value: string): string | undefined {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("/")) return undefined;
-  const body = trimmed.slice(1);
-  const spaceIndex = body.indexOf(" ");
-  const name = (spaceIndex === -1 ? body : body.slice(0, spaceIndex)).trim();
-  return name || undefined;
+  return !!resolveSidebarCommandId(value, sidebarLocale, dynamicSlashCommands);
 }

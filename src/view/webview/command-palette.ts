@@ -1,10 +1,13 @@
 import {
   filterSidebarCommands,
+  isExactSidebarCommandMatch,
+  type SidebarCommandLocale,
   type SidebarCommandDefinition,
 } from "../../shared/sidebar-commands.ts";
 
 interface CommandPaletteOptions {
   applyCommand(name: string): void;
+  locale: SidebarCommandLocale;
   panel: HTMLElement;
   list: HTMLElement;
 }
@@ -28,6 +31,12 @@ export function createCommandPalette(options: CommandPaletteOptions): CommandPal
       const selected = visibleItems[selectedIndex];
       if (!selected) return false;
       const normalizedValue = value.trim();
+      const exactMatch = isExactSidebarCommandMatch(
+        normalizedValue,
+        options.locale,
+        dynamicCommands,
+      );
+      if (exactMatch) return true;
       options.applyCommand(selected.name);
       return normalizedValue === `/${selected.name}`;
     },
@@ -55,7 +64,7 @@ export function createCommandPalette(options: CommandPaletteOptions): CommandPal
         this.hide();
         return;
       }
-      visibleItems = filterSidebarCommands(query, dynamicCommands);
+      visibleItems = filterSidebarCommands(query, options.locale, dynamicCommands);
       selectedIndex = 0;
       renderCommandPalette(options.list, visibleItems, selectedIndex, options.applyCommand);
       options.panel.classList.toggle("hidden", visibleItems.length === 0);

@@ -40,6 +40,9 @@ vi.mock("vscode", () => {
     Position: MockPosition,
     Selection: MockSelection,
     ViewColumn: { One: 1 },
+    env: {
+      language: "zh-CN",
+    },
     window: {
       activeTextEditor: undefined,
       showErrorMessage: vi.fn(),
@@ -62,6 +65,52 @@ vi.mock("vscode", () => {
 });
 
 describe("SidebarViewProvider", () => {
+  it("renders webview html with the current VS Code language", async () => {
+    const vscode = await import("vscode");
+    let renderedHtml = "";
+
+    (vscode.env as { language: string }).language = "en-US";
+
+    const provider: SidebarViewProviderHandle = createSidebarViewProvider({
+      extensionUri: { path: "ext", fsPath: "ext" } as never,
+      controller: {
+        connect() {
+          return () => {};
+        },
+        async handleUiMessage() {},
+        async dispose() {},
+      },
+    });
+
+    provider.resolveWebviewView(
+      {
+        webview: {
+          options: {},
+          get html() {
+            return renderedHtml;
+          },
+          set html(value: string) {
+            renderedHtml = value;
+          },
+          asWebviewUri(uri: unknown) {
+            return uri as never;
+          },
+          onDidReceiveMessage() {
+            return { dispose() {} };
+          },
+          async postMessage() {
+            return true;
+          },
+        },
+        onDidDispose() {},
+      } as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(renderedHtml).toContain('<html lang="en-US">');
+  });
+
   it("inserts active editor selection reference into the webview", async () => {
     const vscode = await import("vscode");
     const postedMessages: unknown[] = [];

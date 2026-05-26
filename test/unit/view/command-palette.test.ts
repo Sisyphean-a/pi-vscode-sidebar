@@ -5,6 +5,7 @@ describe("sidebar command palette", () => {
   beforeEach(() => {
     vi.resetModules();
     document.body.innerHTML = `<div id="app"></div>`;
+    document.documentElement.lang = "en";
   });
 
   it("opens the palette when the composer starts with slash", async () => {
@@ -157,5 +158,93 @@ describe("sidebar command palette", () => {
     expect(dynamicListText).toContain("cg-status");
     expect(dynamicListText).toContain("[u]");
     expect(dynamicListText).toContain("Show CodeGraph status");
+  });
+
+  it("renders built-in slash commands in Chinese when the VS Code language is zh", async () => {
+    document.documentElement.lang = "zh-CN";
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "/新";
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const listText = document.getElementById("command-palette-list")?.textContent ?? "";
+    expect(listText).toContain("新建");
+    expect(listText).toContain("开始新会话");
+  });
+
+  it("submits Chinese slash commands using the stable English command id", async () => {
+    document.documentElement.lang = "zh-CN";
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "/新建";
+    prompt.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+      }),
+    );
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string; name?: string; rawInput?: string }).type === "run_command" &&
+          (message as { type?: string; name?: string; rawInput?: string }).name === "new" &&
+          (message as { type?: string; name?: string; rawInput?: string }).rawInput === "/新建",
+      ),
+    ).toBe(true);
+  });
+
+  it("still accepts English slash commands while Chinese is the active language", async () => {
+    document.documentElement.lang = "zh-CN";
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "/new";
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
+    prompt.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+      }),
+    );
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string; name?: string; rawInput?: string }).type === "run_command" &&
+          (message as { type?: string; name?: string; rawInput?: string }).name === "new" &&
+          (message as { type?: string; name?: string; rawInput?: string }).rawInput === "/new",
+      ),
+    ).toBe(true);
   });
 });

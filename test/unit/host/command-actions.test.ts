@@ -91,6 +91,20 @@ describe("sidebar command actions", () => {
     });
   });
 
+  it("uses the stable English command id even when rawInput is localized", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "new",
+      rawInput: "/新建",
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "new_session",
+    });
+  });
+
   it("opens model selection and sends set_model after selection", async () => {
     const harness = createHarness({
       get_available_models: {

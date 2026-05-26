@@ -91,7 +91,7 @@ class SidebarControllerImpl implements SidebarController {
         await this.onSendPrompt(message.text, message.images, message.correlationId);
         return;
       case "run_command":
-        await this.onRunCommand(message.rawInput, message.correlationId);
+        await this.onRunCommand(message.name, message.rawInput, message.correlationId);
         return;
       case "respond_command_ui":
         await this.onCommandUiResponse(message.requestId, message.payload, message.correlationId);
@@ -154,8 +154,12 @@ class SidebarControllerImpl implements SidebarController {
     await this.options.processManager.stop();
   }
 
-  private async onRunCommand(rawInput: string, correlationId: string | undefined): Promise<void> {
-    const parsed = parseSidebarCommand(rawInput);
+  private async onRunCommand(
+    commandName: string,
+    rawInput: string,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    const parsed = normalizeParsedSidebarCommand(commandName, rawInput);
     if (!parsed) {
       this.emitCommandResult({ status: "error", restoreInput: rawInput });
       return;
@@ -897,4 +901,16 @@ function truncateLabel(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length <= 72) return trimmed;
   return `${trimmed.slice(0, 72)}...`;
+}
+
+function normalizeParsedSidebarCommand(
+  commandName: string,
+  rawInput: string,
+): ReturnType<typeof parseSidebarCommand> {
+  const parsed = parseSidebarCommand(rawInput);
+  if (!parsed) return undefined;
+  return {
+    ...parsed,
+    name: commandName,
+  };
 }
