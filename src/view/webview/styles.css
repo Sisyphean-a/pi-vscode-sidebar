@@ -136,21 +136,28 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.4;
   color: color-mix(
     in srgb,
-    var(--vscode-sideBar-foreground) 88%,
-    var(--vscode-descriptionForeground)
+    var(--vscode-descriptionForeground) 82%,
+    var(--vscode-editor-foreground)
   );
 }
 
 .recent-session-item.is-active .recent-session-item-title {
-  font-weight: 600;
-  color: var(--vscode-sideBar-foreground);
+  font-weight: 500;
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 74%,
+    var(--vscode-editor-foreground)
+  );
 }
 
 .recent-session-item-time {
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
+  line-height: 1.4;
   white-space: nowrap;
 }
 
@@ -688,7 +695,7 @@ textarea {
   min-height: 24px;
   max-height: 160px;
   resize: none;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   border: none;
   border-radius: 0;
@@ -696,8 +703,9 @@ textarea {
   color: var(--vscode-input-foreground);
   background: transparent;
   line-height: 1.5;
-  word-break: normal;
-  overflow-wrap: normal;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .composer textarea::placeholder {
@@ -797,10 +805,13 @@ details pre {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+select:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
+}
+
+.composer textarea:focus-visible {
+  outline: none;
 }
 
 .hidden {

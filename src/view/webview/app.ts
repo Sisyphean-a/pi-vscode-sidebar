@@ -318,6 +318,7 @@ function applyMessageUpdate(event: Record<string, unknown>): void {
   const assistantEvent = asRecord(event.assistantMessageEvent);
   const assistantEventType = readString(assistantEvent?.type);
   if (assistantEventType?.startsWith("toolcall_")) {
+    finalizeThinkingActivity(event);
     const toolName = readToolNameFromEvent(event) ?? "tool";
     const toolArgs = readToolArgsFromEvent(event);
     const groupKey = resolveAssistantActivityGroupKey(event);
@@ -350,6 +351,7 @@ function applyMessageUpdate(event: Record<string, unknown>): void {
 
   const assistantText = extractAssistantText(event);
   if (assistantText) {
+    finalizeThinkingActivity(event);
     const streamKey = resolveAssistantStreamKey(event);
     setMessageText(streamKey, "assistant", assistantText, "merge", [ACTIVE_ASSISTANT_MESSAGE_KEY]);
     return;
@@ -360,6 +362,7 @@ function applyMessageEnd(event: Record<string, unknown>): void {
   const message = asRecord(event.message);
   const role = readString(message?.role);
   if (role === "assistant") {
+    finalizeThinkingActivity(event);
     const streamKey = resolveAssistantStreamKey(event);
     const finalText = extractMessageText(message);
     if (finalText) {
@@ -386,6 +389,10 @@ function applyMessageEnd(event: Record<string, unknown>): void {
       family: resolveToolFamily(toolName),
     });
   }
+}
+
+function finalizeThinkingActivity(event: Record<string, unknown>): void {
+  activityTranscript.finalizeGroup(resolveThinkingActivityGroupKey(event));
 }
 
 function applyToolExecutionEvent(event: Record<string, unknown>, eventType: string): void {

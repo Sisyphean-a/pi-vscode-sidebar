@@ -29,4 +29,15 @@ describe("composer layout source", () => {
     expect(SIDEBAR_TEMPLATE).not.toContain("composer-select-shell");
     expect(styles).not.toMatch(/\.composer-select-shell::after/);
   });
+
+  it("prevents horizontal scrolling and removes the inner focus outline from the prompt textarea", () => {
+    const styles = readFileSync(
+      new URL("../../../src/view/webview/styles.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.composer textarea\s*\{[\s\S]*overflow-x:\s*hidden;/);
+    expect(styles).toMatch(/\.composer textarea\s*\{[\s\S]*overflow-wrap:\s*anywhere;/);
+    expect(styles).toMatch(/\.composer textarea:focus-visible\s*\{[\s\S]*outline:\s*none;/);
+  });
 });

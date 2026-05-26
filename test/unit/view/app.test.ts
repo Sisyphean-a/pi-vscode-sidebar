@@ -1469,6 +1469,65 @@ describe("sidebar webview app", () => {
     expect(collapsedGroup?.getAttribute("data-collapsed")).toBe("true");
   });
 
+  it("collapses thinking as soon as assistant text starts even without thinking_end", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "thinking_delta",
+              delta: "先确认思考块什么时候应该收起。",
+              partial: {
+                role: "assistant",
+                responseId: "resp-thinking-autoclose-1",
+                content: [{ type: "thinking", thinking: "" }],
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    const runningGroup = document.querySelector(".chat-activity-group") as HTMLElement | null;
+    expect(runningGroup?.textContent).toContain("思考：先确认思考块什么时候应该收起。");
+    expect(runningGroup?.getAttribute("data-collapsed")).toBe("false");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              partial: {
+                role: "assistant",
+                responseId: "resp-thinking-autoclose-1",
+                content: [{ type: "text", text: "按你的要求改。" }],
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    const collapsedGroup = document.querySelector(".chat-activity-group") as HTMLElement | null;
+    expect(collapsedGroup?.textContent).toContain("已完成思考");
+    expect(collapsedGroup?.getAttribute("data-collapsed")).toBe("true");
+  });
+
   it("renders command activity with collapsed detail by default after completion", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
