@@ -7,6 +7,7 @@ function createHarness(options?: {
   phase?: "idle" | "streaming" | "awaiting_extension_ui" | "process_dead";
   extensionUiTimeoutMs?: number;
   recentSessions?: RecentSessionSummary[];
+  commandData?: Partial<Record<string, unknown>>;
 }) {
   const emitted: unknown[] = [];
   let listener: ((event: ProcessEvent) => void) | undefined;
@@ -36,7 +37,12 @@ function createHarness(options?: {
     rpcClient: {
       async send(command) {
         sentCommands.push(command);
-        return { type: "response", command: command.type, success: true, data: { ok: true } };
+        return {
+          type: "response",
+          command: command.type,
+          success: true,
+          data: options?.commandData?.[command.type] ?? { ok: true },
+        };
       },
       async sendExtensionUiResponse(response) {
         sentUiResponses.push(response);
@@ -386,5 +392,48 @@ describe("SidebarController", () => {
       { type: "extension_ui_response", id: "req-timeout", cancelled: true },
     ]);
     vi.useRealTimers();
+  });
+
+  it("routes /compact through run_command", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "compact",
+      rawInput: "/compact",
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "compact",
+      customInstructions: undefined,
+    });
+  });
+
+  it("opens sidebar command ui for /resume", async () => {
+    const harness = createHarness({
+      recentSessions: [
+        {
+          sessionId: "session-2",
+          sessionPath: "C:\\sessions\\session-2.jsonl",
+          title: "修复命令面板",
+          updatedAt: "2026-05-26T02:30:00.000Z",
+        },
+      ],
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "resume",
+      rawInput: "/resume",
+    });
+
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          !!item &&
+          (item as { type?: string }).type === "command_ui_request",
+      ),
+    ).toBe(true);
   });
 });

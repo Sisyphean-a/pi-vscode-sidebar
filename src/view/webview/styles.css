@@ -694,12 +694,108 @@ textarea {
 }
 
 .composer {
+  position: relative;
   border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
   border-radius: 16px;
   background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
   padding: 10px 12px 8px;
   display: grid;
   gap: 8px;
+}
+
+.command-palette-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 35;
+  padding: 6px;
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-panel-border, var(--vscode-sideBar-border)) 72%, transparent);
+  border-radius: 12px;
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.command-ui-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 36;
+  padding: 6px;
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-panel-border, var(--vscode-sideBar-border)) 72%, transparent);
+  border-radius: 12px;
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.command-palette-list {
+  display: grid;
+  gap: 2px;
+}
+
+.command-ui-list {
+  display: grid;
+  gap: 2px;
+}
+
+.command-palette-item {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
+  background: transparent;
+  cursor: pointer;
+}
+
+.command-palette-item.is-selected {
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-foreground));
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background));
+}
+
+.command-ui-item {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px 6px calc(8px + (var(--command-depth, 0) * 10px));
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
+  background: transparent;
+  cursor: pointer;
+}
+
+.command-ui-item.is-active {
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--vscode-list-activeSelectionBackground, var(--vscode-button-background)) 52%,
+      transparent
+    );
+}
+
+.command-ui-item:hover,
+.command-ui-item.is-selected {
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-foreground));
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background));
+}
+
+.command-result {
+  min-height: 16px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--vscode-descriptionForeground);
+}
+
+.command-result[data-status="error"] {
+  color: var(--vscode-errorForeground);
 }
 
 .composer:focus-within {

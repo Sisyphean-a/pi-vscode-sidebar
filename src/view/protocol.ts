@@ -4,9 +4,35 @@ export interface UiImageInput {
   path: string;
 }
 
+export interface CommandUiItem {
+  id: string;
+  label: string;
+  detail?: string;
+  depth?: number;
+  active?: boolean;
+  payload?: Record<string, unknown>;
+}
+
+export type CommandUiKind = "session_list" | "model_list" | "message_list" | "session_tree";
+
+export interface CommandUiRequest {
+  id: string;
+  kind: CommandUiKind;
+  items: CommandUiItem[];
+}
+
+export interface CommandResult {
+  status: "success" | "error";
+  message?: string;
+  restoreInput?: string;
+  copyText?: string;
+}
+
 type UiToHostMessagePayload =
   | { type: "ui_ready" }
   | { type: "send_prompt"; text: string; images?: UiImageInput[] }
+  | { type: "run_command"; name: string; rawInput: string; args?: Record<string, unknown> }
+  | { type: "respond_command_ui"; requestId: string; payload: unknown }
   | { type: "open_file_reference"; path: string; startLine: number; endLine?: number }
   | { type: "abort" }
   | { type: "new_session" }
@@ -26,6 +52,8 @@ export type HostToUiMessage =
   | { type: "event"; data: unknown }
   | { type: "insert_prompt_reference"; data: unknown }
   | { type: "extension_ui_request"; data: unknown }
+  | { type: "command_ui_request"; data: CommandUiRequest }
+  | { type: "command_result"; data: CommandResult }
   | { type: "error"; scope: "rpc" | "bridge" | "ui"; message: string }
   | { type: "notice"; message: string };
 
@@ -43,6 +71,10 @@ export function parseUiMessage(input: unknown): UiToHostMessage | undefined {
       return withCorrelation({ type }, message);
     case "send_prompt":
       return withOptionalCorrelation(parseSendPrompt(message), message);
+    case "run_command":
+      return withOptionalCorrelation(parseRunCommand(message), message);
+    case "respond_command_ui":
+      return withOptionalCorrelation(parseCommandUiResponse(message), message);
     case "open_file_reference":
       return withOptionalCorrelation(parseOpenFileReference(message), message);
     case "switch_session":
@@ -75,6 +107,24 @@ function parseSessionName(message: Record<string, unknown>): UiToHostMessagePayl
 function parseExportHtml(message: Record<string, unknown>): UiToHostMessagePayload {
   const outputPath = readString(message.outputPath);
   return outputPath ? { type: "export_html", outputPath } : { type: "export_html" };
+}
+
+function parseRunCommand(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
+  const name = readString(message.name);
+  const rawInput = readString(message.rawInput);
+  if (!name || !rawInput) return undefined;
+  const args = asRecord(message.args);
+  return args
+    ? { type: "run_command", name, rawInput, args }
+    : { type: "run_command", name, rawInput };
+}
+
+function parseCommandUiResponse(
+  message: Record<string, unknown>,
+): UiToHostMessagePayload | undefined {
+  const requestId = readString(message.requestId);
+  if (!requestId) return undefined;
+  return { type: "respond_command_ui", requestId, payload: message.payload };
 }
 
 function parseSendPrompt(message: Record<string, unknown>): UiToHostMessagePayload | undefined {

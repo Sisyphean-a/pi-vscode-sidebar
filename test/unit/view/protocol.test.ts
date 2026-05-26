@@ -32,9 +32,40 @@ describe("parseUiMessage", () => {
     });
   });
 
+  it("accepts run_command payload", () => {
+    const parsed = parseUiMessage({
+      type: "run_command",
+      name: "compact",
+      rawInput: "/compact",
+      args: { customInstructions: "focus" },
+    });
+
+    expect(parsed).toEqual({
+      type: "run_command",
+      name: "compact",
+      rawInput: "/compact",
+      args: { customInstructions: "focus" },
+    });
+  });
+
+  it("accepts respond_command_ui payload", () => {
+    const parsed = parseUiMessage({
+      type: "respond_command_ui",
+      requestId: "cmd-ui-1",
+      payload: { selectedId: "session-1" },
+    });
+
+    expect(parsed).toEqual({
+      type: "respond_command_ui",
+      requestId: "cmd-ui-1",
+      payload: { selectedId: "session-1" },
+    });
+  });
+
   it("rejects malformed payloads", () => {
     expect(parseUiMessage({})).toBeUndefined();
     expect(parseUiMessage({ type: "send_prompt" })).toBeUndefined();
+    expect(parseUiMessage({ type: "run_command", rawInput: "/compact" })).toBeUndefined();
     expect(parseUiMessage({ type: "unknown" })).toBeUndefined();
     expect(parseUiMessage("not-an-object")).toBeUndefined();
   });

@@ -1,9 +1,22 @@
+import { randomUUID } from "node:crypto";
+import { parseSidebarCommand } from "./commands/parser.ts";
 import type { RpcClient } from "./rpc-client.ts";
 import type { PiRpcProcessManager, ProcessEvent } from "./process-manager.ts";
 import type { RpcSessionStateStore } from "./state-store.ts";
-import type { HostToUiMessage, UiToHostMessage } from "../view/protocol.ts";
+import type {
+  CommandResult,
+  CommandUiItem,
+  CommandUiRequest,
+  HostToUiMessage,
+  UiToHostMessage,
+} from "../view/protocol.ts";
 import type { RecentSessionSummary } from "../shared/recent-sessions.ts";
-import type { RpcCommand, RpcExtensionUIResponse, RpcSessionState } from "../shared/rpc-types.ts";
+import type {
+  RpcCommand,
+  RpcExtensionUIResponse,
+  RpcSessionState,
+  RpcSessionTreeNode,
+} from "../shared/rpc-types.ts";
 import type { Logger } from "./logger.ts";
 
 export interface SidebarController {
@@ -24,6 +37,12 @@ export interface SidebarControllerOptions {
 }
 
 const DEFAULT_EXTENSION_UI_TIMEOUT_MS = 120000;
+type PendingCommandUiKind = "fork" | "model" | "resume" | "tree";
+
+interface PendingCommandUiRequest {
+  kind: PendingCommandUiKind;
+  rawInput: string;
+}
 
 export function createSidebarController(options: SidebarControllerOptions): SidebarController {
   return new SidebarControllerImpl(options);
@@ -34,6 +53,7 @@ class SidebarControllerImpl implements SidebarController {
   private readonly unsubscribe: () => void;
   private readonly extensionUiTimeoutMs: number;
   private readonly pendingExtensionUiRequests = new Map<string, NodeJS.Timeout>();
+  private readonly pendingCommandUiRequests = new Map<string, PendingCommandUiRequest>();
 
   constructor(private readonly options: SidebarControllerOptions) {
     this.extensionUiTimeoutMs = normalizeTimeoutMs(options.extensionUiTimeoutMs);
@@ -65,6 +85,12 @@ class SidebarControllerImpl implements SidebarController {
         return;
       case "send_prompt":
         await this.onSendPrompt(message.text, message.images, message.correlationId);
+        return;
+      case "run_command":
+        await this.onRunCommand(message.rawInput, message.correlationId);
+        return;
+      case "respond_command_ui":
+        await this.onCommandUiResponse(message.requestId, message.payload, message.correlationId);
         return;
       case "abort":
         await this.onSimpleCommand({ type: "abort" }, "idle", message.correlationId);
@@ -124,6 +150,258 @@ class SidebarControllerImpl implements SidebarController {
     await this.options.processManager.stop();
   }
 
+  private async onRunCommand(rawInput: string, correlationId: string | undefined): Promise<void> {
+    const parsed = parseSidebarCommand(rawInput);
+    if (!parsed) {
+      this.emitCommandResult({ status: "error", restoreInput: rawInput });
+      return;
+    }
+
+    if (await this.runDirectSidebarCommand(parsed, correlationId)) return;
+    if (await this.openSidebarCommandUi(parsed, correlationId)) return;
+
+    this.emitCommandResult({
+      status: "error",
+      message: `未实现命令：/${parsed.name}`,
+      restoreInput: rawInput,
+    });
+  }
+
+  private async runDirectSidebarCommand(
+    parsed: ReturnType<typeof parseSidebarCommand>,
+    correlationId: string | undefined,
+  ): Promise<boolean> {
+    if (!parsed) return false;
+    if (parsed.name === "new") {
+      await this.onSimpleCommand({ type: "new_session" }, "idle", correlationId);
+      return true;
+    }
+    if (parsed.name === "compact") {
+      await this.onSimpleCommand(
+        { type: "compact", customInstructions: parsed.tail || undefined },
+        "idle",
+        correlationId,
+      );
+      return true;
+    }
+    if (parsed.name === "clone") {
+      await this.onSimpleCommand({ type: "clone" }, "idle", correlationId);
+      return true;
+    }
+    if (parsed.name === "name") {
+      if (!parsed.tail) {
+        this.emitCommandError("会话名称不能为空", parsed.rawInput);
+        return true;
+      }
+      await this.onSimpleCommand(
+        { type: "set_session_name", name: parsed.tail },
+        "idle",
+        correlationId,
+      );
+      return true;
+    }
+    if (parsed.name === "copy") {
+      await this.onCopyCommand(correlationId, parsed.rawInput);
+      return true;
+    }
+    if (parsed.name === "export") {
+      await this.onExportCommand(parsed.tail || undefined, correlationId, parsed.rawInput);
+      return true;
+    }
+    return false;
+  }
+
+  private async openSidebarCommandUi(
+    parsed: ReturnType<typeof parseSidebarCommand>,
+    correlationId: string | undefined,
+  ): Promise<boolean> {
+    if (!parsed) return false;
+    if (parsed.name === "resume") {
+      await this.openResumeCommandUi(parsed.rawInput);
+      return true;
+    }
+    if (parsed.name === "model") {
+      await this.openModelCommandUi(parsed.rawInput, correlationId);
+      return true;
+    }
+    if (parsed.name === "fork") {
+      await this.openForkCommandUi(parsed.rawInput, correlationId);
+      return true;
+    }
+    if (parsed.name === "tree") {
+      await this.openTreeCommandUi(parsed.rawInput, correlationId);
+      return true;
+    }
+    return false;
+  }
+
+  private async openResumeCommandUi(rawInput: string): Promise<void> {
+    const sessions = (await this.options.listRecentSessions?.()) ?? [];
+    if (sessions.length === 0) {
+      this.emitCommandError("没有可恢复的会话", rawInput);
+      return;
+    }
+
+    const requestId = createCommandUiRequestId();
+    this.pendingCommandUiRequests.set(requestId, { kind: "resume", rawInput });
+    this.emitCommandUiRequest(requestId, "session_list", sessions.map(toSessionCommandUiItem));
+  }
+
+  private async openModelCommandUi(
+    rawInput: string,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    const response = await this.sendRpcCommand({ type: "get_available_models" }, correlationId);
+    if (!response.success) {
+      this.reportCommandFailure(response, correlationId);
+      this.emitCommandError(response.error ?? "获取模型失败", rawInput);
+      return;
+    }
+
+    const items = readModelCommandUiItems(response.data);
+    if (items.length === 0) {
+      this.emitCommandError("没有可选模型", rawInput);
+      return;
+    }
+
+    const requestId = createCommandUiRequestId();
+    this.pendingCommandUiRequests.set(requestId, { kind: "model", rawInput });
+    this.emitCommandUiRequest(requestId, "model_list", items);
+  }
+
+  private async openForkCommandUi(
+    rawInput: string,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    const response = await this.sendRpcCommand({ type: "get_fork_messages" }, correlationId);
+    if (!response.success) {
+      this.reportCommandFailure(response, correlationId);
+      this.emitCommandError(response.error ?? "获取分叉列表失败", rawInput);
+      return;
+    }
+
+    const items = readForkCommandUiItems(response.data);
+    if (items.length === 0) {
+      this.emitCommandError("没有可分叉的用户消息", rawInput);
+      return;
+    }
+
+    const requestId = createCommandUiRequestId();
+    this.pendingCommandUiRequests.set(requestId, { kind: "fork", rawInput });
+    this.emitCommandUiRequest(requestId, "message_list", items);
+  }
+
+  private async openTreeCommandUi(
+    rawInput: string,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    const response = await this.sendRpcCommand({ type: "get_session_tree" }, correlationId);
+    if (!response.success) {
+      this.reportCommandFailure(response, correlationId);
+      this.emitCommandError(response.error ?? "获取会话树失败", rawInput);
+      return;
+    }
+
+    const items = readTreeCommandUiItems(response.data);
+    if (items.length === 0) {
+      this.emitCommandError("没有可切换的树节点", rawInput);
+      return;
+    }
+
+    const requestId = createCommandUiRequestId();
+    this.pendingCommandUiRequests.set(requestId, { kind: "tree", rawInput });
+    this.emitCommandUiRequest(requestId, "session_tree", items);
+  }
+
+  private async onCopyCommand(correlationId: string | undefined, rawInput: string): Promise<void> {
+    const response = await this.sendRpcCommand({ type: "get_last_assistant_text" }, correlationId);
+    if (!response.success) {
+      this.reportCommandFailure(response, correlationId);
+      this.emitCommandError(response.error ?? "获取最后一条助手消息失败", rawInput);
+      return;
+    }
+
+    const copyText = readLastAssistantText(response.data);
+    if (!copyText) {
+      this.emitCommandError("没有可复制的助手消息", rawInput);
+      return;
+    }
+
+    this.emitCommandResult({
+      status: "success",
+      message: "已复制",
+      copyText,
+    });
+  }
+
+  private async onExportCommand(
+    outputPath: string | undefined,
+    correlationId: string | undefined,
+    rawInput: string,
+  ): Promise<void> {
+    const response = await this.sendRpcCommand({ type: "export_html", outputPath }, correlationId);
+    if (!response.success) {
+      this.reportCommandFailure(response, correlationId);
+      this.emitCommandError(response.error ?? "导出失败", rawInput);
+      return;
+    }
+
+    const path = readExportPath(response.data);
+    this.emitCommandResult({
+      status: "success",
+      message: path ? `已导出：${path}` : "已导出",
+    });
+  }
+
+  private async onCommandUiResponse(
+    requestId: string,
+    payload: unknown,
+    correlationId: string | undefined,
+  ): Promise<void> {
+    const pending = this.pendingCommandUiRequests.get(requestId);
+    if (!pending) return;
+    this.pendingCommandUiRequests.delete(requestId);
+
+    const selectedId = readSelectedCommandUiId(payload);
+    if (!selectedId && pending.kind !== "model") return;
+
+    if (pending.kind === "resume" && selectedId) {
+      await this.onSimpleCommand(
+        { type: "switch_session", sessionPath: selectedId },
+        "idle",
+        correlationId,
+      );
+      return;
+    }
+
+    if (pending.kind === "model") {
+      const modelSelection = readModelSelection(payload);
+      if (!modelSelection) {
+        this.emitCommandError("模型选择无效", pending.rawInput);
+        return;
+      }
+      await this.onSimpleCommand(
+        { type: "set_model", provider: modelSelection.provider, modelId: modelSelection.modelId },
+        this.options.stateStore.snapshot().phase,
+        correlationId,
+      );
+      return;
+    }
+
+    if (pending.kind === "fork" && selectedId) {
+      await this.onSimpleCommand({ type: "fork", entryId: selectedId }, "idle", correlationId);
+      return;
+    }
+
+    if (pending.kind === "tree" && selectedId) {
+      await this.onSimpleCommand(
+        { type: "navigate_session_tree", entryId: selectedId },
+        "idle",
+        correlationId,
+      );
+    }
+  }
+
   private async onSendPrompt(
     text: string,
     images: Array<{ path: string }> | undefined,
@@ -164,7 +442,7 @@ class SidebarControllerImpl implements SidebarController {
         data: { type: "query_result", command: command.type, data: response.data, correlationId },
       });
     }
-    if (command.type === "new_session" || command.type === "switch_session") {
+    if (shouldReplayMessagesAfterCommand(command.type)) {
       await this.replayMessages(correlationId, true);
     }
   }
@@ -176,8 +454,7 @@ class SidebarControllerImpl implements SidebarController {
   }
 
   private async onRpcQuery(command: RpcCommand, correlationId: string | undefined): Promise<void> {
-    await this.options.ensureStarted();
-    const response = await this.options.rpcClient.send(withCommandId(command, correlationId));
+    const response = await this.sendRpcCommand(command, correlationId);
     this.reportCommandFailure(response, correlationId);
     if (!response.success) return;
     this.emit({
@@ -292,6 +569,34 @@ class SidebarControllerImpl implements SidebarController {
     this.sink?.(message);
   }
 
+  private emitCommandResult(data: CommandResult): void {
+    this.emit({ type: "command_result", data });
+  }
+
+  private emitCommandUiRequest(
+    id: string,
+    kind: CommandUiRequest["kind"],
+    items: CommandUiItem[],
+  ): void {
+    this.emit({
+      type: "command_ui_request",
+      data: { id, kind, items },
+    });
+  }
+
+  private emitCommandError(message: string, restoreInput: string): void {
+    this.emitCommandResult({
+      status: "error",
+      message,
+      restoreInput,
+    });
+  }
+
+  private async sendRpcCommand(command: RpcCommand, correlationId: string | undefined) {
+    await this.options.ensureStarted();
+    return this.options.rpcClient.send(withCommandId(command, correlationId));
+  }
+
   private reportBackgroundSyncFailure(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     this.options.logger?.error({
@@ -367,6 +672,16 @@ function shouldEmitCommandResult(commandType: RpcCommand["type"]): boolean {
   return commandType === "set_model" || commandType === "set_thinking_level";
 }
 
+function shouldReplayMessagesAfterCommand(commandType: RpcCommand["type"]): boolean {
+  return (
+    commandType === "new_session" ||
+    commandType === "switch_session" ||
+    commandType === "clone" ||
+    commandType === "fork" ||
+    commandType === "navigate_session_tree"
+  );
+}
+
 function isBlockingExtensionUiMethod(method: string): boolean {
   return method === "select" || method === "confirm" || method === "input" || method === "editor";
 }
@@ -401,4 +716,105 @@ function isUnsupportedGetMessagesError(error: string | undefined): boolean {
     normalized.includes("unknown command") ||
     normalized.includes("unsupported")
   );
+}
+
+function createCommandUiRequestId(): string {
+  return `cmd-ui-${randomUUID()}`;
+}
+
+function toSessionCommandUiItem(session: RecentSessionSummary): CommandUiRequest["items"][number] {
+  return {
+    id: session.sessionPath,
+    label: session.title,
+    detail: session.updatedAt,
+    payload: { selectedId: session.sessionPath },
+  };
+}
+
+function readSelectedCommandUiId(payload: unknown): string | undefined {
+  if (typeof payload === "string" && payload) return payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const selectedId = (payload as { selectedId?: unknown }).selectedId;
+  return typeof selectedId === "string" && selectedId ? selectedId : undefined;
+}
+
+function readModelSelection(payload: unknown): { provider: string; modelId: string } | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+  const provider = (payload as { provider?: unknown }).provider;
+  const modelId = (payload as { modelId?: unknown }).modelId;
+  if (typeof provider !== "string" || !provider) return undefined;
+  if (typeof modelId !== "string" || !modelId) return undefined;
+  return { provider, modelId };
+}
+
+function readModelCommandUiItems(data: unknown): CommandUiItem[] {
+  const models = Array.isArray((data as { models?: unknown[] } | undefined)?.models)
+    ? (data as { models: unknown[] }).models
+    : [];
+  return models.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const provider = (entry as { provider?: unknown }).provider;
+    const id = (entry as { id?: unknown }).id;
+    if (typeof provider !== "string" || !provider) return [];
+    if (typeof id !== "string" || !id) return [];
+    const name = (entry as { name?: unknown }).name;
+    return [
+      {
+        id: `${provider}/${id}`,
+        label: typeof name === "string" && name ? name : id,
+        detail: provider,
+        payload: { provider, modelId: id },
+      },
+    ];
+  });
+}
+
+function readForkCommandUiItems(data: unknown): CommandUiItem[] {
+  const messages = Array.isArray((data as { messages?: unknown[] } | undefined)?.messages)
+    ? (data as { messages: unknown[] }).messages
+    : [];
+  return messages.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const entryId = (entry as { entryId?: unknown }).entryId;
+    const text = (entry as { text?: unknown }).text;
+    if (typeof entryId !== "string" || !entryId) return [];
+    if (typeof text !== "string" || !text) return [];
+    return [
+      {
+        id: entryId,
+        label: truncateLabel(text),
+        payload: { selectedId: entryId },
+      },
+    ];
+  });
+}
+
+function readTreeCommandUiItems(data: unknown): CommandUiItem[] {
+  const nodes = Array.isArray((data as { nodes?: RpcSessionTreeNode[] } | undefined)?.nodes)
+    ? (data as { nodes: RpcSessionTreeNode[] }).nodes
+    : [];
+  return nodes.map((node) => ({
+    id: node.entryId,
+    label: node.label?.trim() || truncateLabel(node.previewText),
+    detail: node.label?.trim() ? truncateLabel(node.previewText) : undefined,
+    depth: node.depth,
+    active: node.isActive,
+    payload: { selectedId: node.entryId },
+  }));
+}
+
+function readLastAssistantText(data: unknown): string | undefined {
+  const text = (data as { text?: unknown } | undefined)?.text;
+  return typeof text === "string" && text ? text : undefined;
+}
+
+function readExportPath(data: unknown): string | undefined {
+  const path = (data as { path?: unknown } | undefined)?.path;
+  return typeof path === "string" && path ? path : undefined;
+}
+
+function truncateLabel(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 72) return trimmed;
+  return `${trimmed.slice(0, 72)}...`;
 }

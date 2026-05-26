@@ -36,7 +36,14 @@ export const SIDEBAR_TEMPLATE = `
     </section>
 
     <footer class="composer">
+      <div id="command-palette-panel" class="command-palette-panel hidden">
+        <div id="command-palette-list" class="command-palette-list"></div>
+      </div>
+      <div id="command-ui-panel" class="command-ui-panel hidden">
+        <div id="command-ui-list" class="command-ui-list"></div>
+      </div>
       <textarea id="prompt-input" rows="1" placeholder="继续提问"></textarea>
+      <div id="command-result" class="command-result hidden"></div>
       <div class="composer-toolbar">
         <div id="composer-meta" class="composer-meta">
           <div id="model-picker" class="composer-picker">

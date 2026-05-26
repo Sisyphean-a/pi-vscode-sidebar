@@ -1,4 +1,6 @@
 import { createActivityTranscript } from "./activity-transcript.ts";
+import { createCommandPalette } from "./command-palette.ts";
+import { createCommandUiController } from "./command-ui.ts";
 import { resetComposerHeight, syncComposerHeight } from "./composer.ts";
 import { createComposerPicker } from "./composer-picker.ts";
 import { createExtensionUiRenderer } from "./extension-ui.ts";
@@ -60,6 +62,31 @@ const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
 const messageFeed = expectElement<HTMLElement>("message-feed");
+const commandPalette = createCommandPalette({
+  applyCommand(name) {
+    promptInput.value = `/${name}`;
+    syncComposerHeight(promptInput);
+    promptInput.focus();
+    commandPalette.update(promptInput.value);
+  },
+  panel: expectElement<HTMLElement>("command-palette-panel"),
+  list: expectElement<HTMLElement>("command-palette-list"),
+});
+const commandUi = createCommandUiController({
+  panel: expectElement<HTMLElement>("command-ui-panel"),
+  list: expectElement<HTMLElement>("command-ui-list"),
+  result: expectElement<HTMLElement>("command-result"),
+  focusComposer() {
+    promptInput.focus();
+  },
+  postResponse(requestId, payload) {
+    postUiMessage({ type: "respond_command_ui", requestId, payload });
+  },
+  setComposerValue(value) {
+    promptInput.value = value;
+    syncComposerHeight(promptInput);
+  },
+});
 const modelPicker = createComposerPicker({
   root: expectElement<HTMLElement>("model-picker"),
   trigger: expectElement<HTMLButtonElement>("model-picker-trigger"),
@@ -163,6 +190,8 @@ sendButton.addEventListener("click", () => {
 });
 promptInput.addEventListener("input", () => {
   syncComposerHeight(promptInput);
+  commandUi.clearResult();
+  commandPalette.update(promptInput.value);
 });
 messageFeed.addEventListener("click", (event) => {
   handleMessageFeedClick(event);
@@ -175,8 +204,14 @@ scrollToBottomButton.addEventListener("click", () => {
   scrollToConversationBottom(true);
 });
 promptInput.addEventListener("keydown", (event) => {
+  if (commandUi.handleKeydown(event)) return;
+  if (handleCommandPaletteKeydown(event)) return;
   if (event.key !== "Enter" || event.shiftKey) return;
   event.preventDefault();
+  if (shouldSubmitCommand(promptInput.value)) {
+    submitCommand();
+    return;
+  }
   sendPrompt();
 });
 newSessionButton.addEventListener("click", () => {
@@ -216,6 +251,17 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   }
   if (message.type === "state") {
     updateState(message.data as Record<string, unknown>);
+    return;
+  }
+  if (message.type === "command_ui_request") {
+    resolveBootingNotice();
+    commandPalette.hide();
+    commandUi.renderRequest(message.data);
+    return;
+  }
+  if (message.type === "command_result") {
+    resolveBootingNotice();
+    void commandUi.applyResult(message.data);
     return;
   }
   if (message.type === "extension_ui_request") {
@@ -1245,6 +1291,47 @@ function sendPrompt(): void {
   postUiMessage({ type: "send_prompt", text });
   promptInput.value = "";
   resetComposerHeight(promptInput);
+  commandPalette.hide();
+}
+
+function submitCommand(): void {
+  const rawInput = promptInput.value.trim();
+  const name = readCommandName(rawInput);
+  if (!name) return;
+  postUiMessage({ type: "run_command", name, rawInput });
+  promptInput.value = "";
+  resetComposerHeight(promptInput);
+  commandPalette.hide();
+}
+
+function handleCommandPaletteKeydown(event: KeyboardEvent): boolean {
+  if (!commandPalette.isVisible()) return false;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    return commandPalette.moveSelection(1);
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    return commandPalette.moveSelection(-1);
+  }
+  if (event.key === "Tab") {
+    event.preventDefault();
+    commandPalette.applySelection(promptInput.value);
+    return true;
+  }
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    if (commandPalette.applySelection(promptInput.value)) {
+      submitCommand();
+    }
+    return true;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    commandPalette.hide();
+    return true;
+  }
+  return false;
 }
 
 function postUiMessage(message: Record<string, unknown>): void {
@@ -1398,4 +1485,17 @@ function isNearBottom(): boolean {
 function nextLocalMessageKey(prefix: string): string {
   localMessageSeq += 1;
   return `${prefix}:local:${localMessageSeq}`;
+}
+
+function shouldSubmitCommand(value: string): boolean {
+  return !!readCommandName(value);
+}
+
+function readCommandName(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) return undefined;
+  const body = trimmed.slice(1);
+  const spaceIndex = body.indexOf(" ");
+  const name = (spaceIndex === -1 ? body : body.slice(0, spaceIndex)).trim();
+  return name || undefined;
 }

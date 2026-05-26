@@ -10,11 +10,28 @@ export type RpcCommand =
   | { id?: string; type: "set_model"; provider: string; modelId: string }
   | { id?: string; type: "get_available_models" }
   | { id?: string; type: "set_thinking_level"; level: ThinkingLevel }
+  | { id?: string; type: "compact"; customInstructions?: string }
   | { id?: string; type: "get_session_stats" }
   | { id?: string; type: "get_messages" }
   | { id?: string; type: "export_html"; outputPath?: string }
   | { id?: string; type: "switch_session"; sessionPath: string }
+  | { id?: string; type: "clone" }
+  | { id?: string; type: "fork"; entryId: string }
+  | { id?: string; type: "get_fork_messages" }
+  | { id?: string; type: "get_last_assistant_text" }
+  | { id?: string; type: "get_session_tree" }
+  | { id?: string; type: "navigate_session_tree"; entryId: string }
   | { id?: string; type: "set_session_name"; name: string };
+
+export interface RpcSessionTreeNode {
+  entryId: string;
+  parentEntryId?: string;
+  label?: string;
+  previewText: string;
+  depth: number;
+  isActive: boolean;
+  hasChildren: boolean;
+}
 
 export interface RpcSessionState {
   model?: { provider: string; id: string };
@@ -34,6 +51,7 @@ export type RpcResponse =
 export type AgentEventType =
   | "agent_start"
   | "agent_end"
+  | "session_info_changed"
   | "turn_start"
   | "turn_end"
   | "thinking_level_changed"
@@ -100,6 +118,7 @@ export function isAgentEventLike(value: unknown): value is AgentEventLike {
 const EVENT_TYPES = new Set<AgentEventType>([
   "agent_start",
   "agent_end",
+  "session_info_changed",
   "turn_start",
   "turn_end",
   "thinking_level_changed",

@@ -49,6 +49,10 @@ describe("createPiRpcProcessManager", () => {
     expect(isAgentEventLike({ type: "thinking_level_changed", level: "high" })).toBe(true);
   });
 
+  it("recognizes session_info_changed as an agent event", () => {
+    expect(isAgentEventLike({ type: "session_info_changed", name: "查询样式配置位置" })).toBe(true);
+  });
+
   it("fails fast when pi binary is missing", async () => {
     const manager = createPiRpcProcessManager();
     const events: Array<{ type: string; message?: string }> = [];
