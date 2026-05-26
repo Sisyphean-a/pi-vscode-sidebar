@@ -1,7 +1,16 @@
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface UiImageInput {
-  path: string;
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
+export interface UiPendingImageAttachment {
+  id: string;
+  name: string;
+  previewUrl: string;
+  image: UiImageInput;
 }
 
 export interface CommandUiItem {
@@ -31,6 +40,8 @@ export interface CommandResult {
 type UiToHostMessagePayload =
   | { type: "ui_ready" }
   | { type: "send_prompt"; text: string; images?: UiImageInput[] }
+  | { type: "pick_image_attachments" }
+  | { type: "store_pasted_image_attachment"; dataUrl: string; mimeType: string; name?: string }
   | { type: "run_command"; name: string; rawInput: string; args?: Record<string, unknown> }
   | { type: "respond_command_ui"; requestId: string; payload: unknown }
   | { type: "open_file_reference"; path: string; startLine: number; endLine?: number }
@@ -51,6 +62,7 @@ export type HostToUiMessage =
   | { type: "state"; data: unknown }
   | { type: "event"; data: unknown }
   | { type: "insert_prompt_reference"; data: unknown }
+  | { type: "image_attachments_added"; data: { attachments: UiPendingImageAttachment[] } }
   | { type: "extension_ui_request"; data: unknown }
   | { type: "command_ui_request"; data: CommandUiRequest }
   | { type: "command_result"; data: CommandResult }
@@ -68,9 +80,12 @@ export function parseUiMessage(input: unknown): UiToHostMessage | undefined {
     case "ui_ready":
     case "abort":
     case "new_session":
+    case "pick_image_attachments":
       return withCorrelation({ type }, message);
     case "send_prompt":
       return withOptionalCorrelation(parseSendPrompt(message), message);
+    case "store_pasted_image_attachment":
+      return withOptionalCorrelation(parseStorePastedImageAttachment(message), message);
     case "run_command":
       return withOptionalCorrelation(parseRunCommand(message), message);
     case "respond_command_ui":
@@ -174,15 +189,29 @@ function parseExtensionUiResponse(
   return { type: "respond_extension_ui", requestId, payload: message.payload };
 }
 
+function parseStorePastedImageAttachment(
+  message: Record<string, unknown>,
+): UiToHostMessagePayload | undefined {
+  const dataUrl = readString(message.dataUrl);
+  const mimeType = readString(message.mimeType);
+  const name = readString(message.name);
+  if (!dataUrl || !mimeType) return undefined;
+  return name
+    ? { type: "store_pasted_image_attachment", dataUrl, mimeType, name }
+    : { type: "store_pasted_image_attachment", dataUrl, mimeType };
+}
+
 function parseImages(input: unknown): UiImageInput[] | undefined {
   if (input === undefined) return undefined;
   if (!Array.isArray(input)) return undefined;
   const images: UiImageInput[] = [];
   for (const item of input) {
     const image = asRecord(item);
-    const path = image ? readString(image.path) : undefined;
-    if (!path) return undefined;
-    images.push({ path });
+    const type = image ? readString(image.type) : undefined;
+    const data = image ? readString(image.data) : undefined;
+    const mimeType = image ? readString(image.mimeType) : undefined;
+    if (type !== "image" || !data || !mimeType) return undefined;
+    images.push({ type: "image", data, mimeType });
   }
   return images;
 }

@@ -15,6 +15,7 @@ import { findBuiltinSidebarCommand } from "../shared/sidebar-commands.ts";
 import type {
   RpcCommand,
   RpcExtensionUIResponse,
+  RpcImageContent,
   RpcSlashCommand,
   RpcSessionState,
   RpcSessionTreeNode,
@@ -425,7 +426,7 @@ class SidebarControllerImpl implements SidebarController {
 
   private async onSendPrompt(
     text: string,
-    images: Array<{ path: string }> | undefined,
+    images: RpcImageContent[] | undefined,
     correlationId: string | undefined,
   ): Promise<void> {
     const phase = this.options.stateStore.snapshot().phase;
@@ -444,6 +445,10 @@ class SidebarControllerImpl implements SidebarController {
     const response = await this.options.rpcClient.send(
       withCommandId({ type: "prompt", message: text, images }, correlationId),
     );
+    if (!response.success) {
+      this.options.stateStore.markIdle();
+      this.emitState();
+    }
     this.reportCommandFailure(response, correlationId);
   }
 

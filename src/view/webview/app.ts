@@ -14,7 +14,7 @@ import {
   type SidebarCommandDefinition,
 } from "../../shared/sidebar-commands.ts";
 import type { RpcSlashCommand } from "../../shared/rpc-types.ts";
-import type { HostToUiMessage } from "../protocol.ts";
+import type { HostToUiMessage, UiPendingImageAttachment } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
 import {
   asRecord,
@@ -34,6 +34,7 @@ interface ChatMessageRefs {
   role: ChatRole;
   article: HTMLElement;
   content: HTMLElement;
+  attachmentStrip?: HTMLElement;
   details?: HTMLDetailsElement;
   detailsSummary?: HTMLElement;
   detailsPre?: HTMLPreElement;
@@ -45,6 +46,7 @@ interface AvailableModel {
   name?: string;
   contextWindow?: number;
   reasoning?: boolean;
+  input?: string[];
   thinkingLevelMap?: ThinkingLevelMap;
 }
 
@@ -68,6 +70,8 @@ const sendButton = expectElement<HTMLButtonElement>("send-button");
 const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
+const imageAttachmentList = expectElement<HTMLElement>("image-attachment-list");
+const imageAttachmentButton = expectElement<HTMLButtonElement>("image-attachment-button");
 const messageFeed = expectElement<HTMLElement>("message-feed");
 const sidebarLocale = resolveSidebarLocale(document.documentElement.lang);
 const commandPalette = createCommandPalette({
@@ -166,10 +170,12 @@ let shouldAutoScroll = true;
 let hasResolvedConversationState = false;
 let currentSessionPath: string | undefined;
 let dynamicSlashCommands: SidebarCommandDefinition[] = [];
+let pendingImageAttachments: UiPendingImageAttachment[] = [];
 
 resetComposerHeight(promptInput);
 renderSendButton();
 renderThinkingLevelPicker("medium");
+renderImageAttachmentUi();
 
 const renderExtensionUiRequest = createExtensionUiRenderer({
   panel: extensionUiPanel,
@@ -198,10 +204,20 @@ sendButton.addEventListener("click", () => {
   }
   sendPrompt();
 });
+imageAttachmentButton.addEventListener("click", () => {
+  if (!activeModelSupportsImages()) {
+    appendTransientMessage("error", "当前模型不支持图片输入");
+    return;
+  }
+  postUiMessage({ type: "pick_image_attachments" });
+});
 promptInput.addEventListener("input", () => {
   syncComposerHeight(promptInput);
   commandUi.clearResult();
   commandPalette.update(promptInput.value);
+});
+promptInput.addEventListener("paste", (event) => {
+  void handlePromptPaste(event);
 });
 messageFeed.addEventListener("click", (event) => {
   handleMessageFeedClick(event);
@@ -214,6 +230,7 @@ scrollToBottomButton.addEventListener("click", () => {
   scrollToConversationBottom(true);
 });
 promptInput.addEventListener("keydown", (event) => {
+  if (event.isComposing || event.key === "Process") return;
   if (commandUi.handleKeydown(event)) return;
   if (handleCommandPaletteKeydown(event)) return;
   if (event.key !== "Enter" || event.shiftKey) return;
@@ -257,6 +274,10 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   }
   if (message.type === "insert_prompt_reference") {
     insertPromptReference(message.data);
+    return;
+  }
+  if (message.type === "image_attachments_added") {
+    applyImageAttachments(message.data);
     return;
   }
   if (message.type === "state") {
@@ -333,6 +354,7 @@ function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
   if (pendingModelValue && currentModelValue !== pendingModelValue) return;
   pendingModelValue = "";
   renderModelPicker();
+  renderImageAttachmentUi();
 }
 
 function applyAgentEvent(data: unknown): void {
@@ -530,17 +552,20 @@ function renderMessageText(state: ChatMessageRefs, text: string): void {
   }
 
   if (state.role === "assistant") {
+    clearMessageAttachments(state);
     state.content.replaceChildren(renderAssistantMarkdown(text));
     removeToolDetails(state);
     return;
   }
 
   if (state.role === "user" || state.role === "error") {
+    if (state.role === "error") clearMessageAttachments(state);
     state.content.replaceChildren(renderPlainTextWithReferences(text));
     removeToolDetails(state);
     return;
   }
 
+  clearMessageAttachments(state);
   state.content.textContent = text;
   removeToolDetails(state);
 }
@@ -846,6 +871,7 @@ function applyAvailableModelsQueryResult(event: Record<string, unknown>): void {
   }
   modelOptionsLoaded = true;
   renderModelPicker();
+  renderImageAttachmentUi();
 }
 
 function renderModelPicker(): void {
@@ -921,6 +947,7 @@ function extractAvailableModels(data: unknown): AvailableModel[] | undefined {
     const contextWindow =
       typeof model?.contextWindow === "number" ? model.contextWindow : undefined;
     const reasoning = model?.reasoning === true;
+    const input = extractModelInput(model?.input);
     const thinkingLevelMap = extractThinkingLevelMap(model?.thinkingLevelMap);
     available.push({
       provider,
@@ -928,10 +955,17 @@ function extractAvailableModels(data: unknown): AvailableModel[] | undefined {
       name,
       contextWindow,
       reasoning,
+      input,
       thinkingLevelMap,
     });
   }
   return available;
+}
+
+function extractModelInput(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.filter((item): item is string => typeof item === "string");
+  return entries.length > 0 ? entries : undefined;
 }
 
 function extractThinkingLevelMap(value: unknown): ThinkingLevelMap | undefined {
@@ -1317,10 +1351,24 @@ function promoteMessageKey(key: string, fallbackKeys: string[]): void {
 
 function sendPrompt(): void {
   const text = promptInput.value.trim();
-  if (!text) return;
-  appendTransientMessage("user", text);
-  postUiMessage({ type: "send_prompt", text });
+  if (!text && pendingImageAttachments.length === 0) return;
+  if (pendingImageAttachments.length > 0 && !activeModelSupportsImages()) {
+    appendTransientMessage("error", "当前模型不支持图片输入");
+    return;
+  }
+  const userMessageKey = nextLocalMessageKey("user");
+  setMessageText(userMessageKey, "user", text, "replace");
+  if (pendingImageAttachments.length > 0) {
+    attachImagesToMessage(userMessageKey, pendingImageAttachments);
+  }
+  postUiMessage({
+    type: "send_prompt",
+    text,
+    images: pendingImageAttachments.map((attachment) => attachment.image),
+  });
   promptInput.value = "";
+  pendingImageAttachments = [];
+  renderImageAttachmentUi();
   resetComposerHeight(promptInput);
   commandPalette.hide();
 }
@@ -1398,6 +1446,123 @@ function syncStreamingPhase(phase: string): void {
   renderSendButton();
 }
 
+function applyImageAttachments(data: { attachments?: UiPendingImageAttachment[] }): void {
+  const attachments = Array.isArray(data.attachments) ? data.attachments : [];
+  if (attachments.length === 0) return;
+  pendingImageAttachments = [...pendingImageAttachments, ...attachments];
+  renderImageAttachmentUi();
+}
+
+function renderImageAttachmentUi(): void {
+  imageAttachmentButton.disabled = !activeModelSupportsImages();
+  imageAttachmentList.replaceChildren();
+  if (pendingImageAttachments.length === 0) {
+    imageAttachmentList.classList.add("hidden");
+    return;
+  }
+
+  imageAttachmentList.classList.remove("hidden");
+  for (const attachment of pendingImageAttachments) {
+    imageAttachmentList.append(createImageAttachmentCard(attachment));
+  }
+}
+
+function createImageAttachmentCard(attachment: UiPendingImageAttachment): HTMLElement {
+  const card = document.createElement("article");
+  card.className = "composer-image-attachment";
+
+  const preview = document.createElement("img");
+  preview.className = "composer-image-preview";
+  preview.src = attachment.previewUrl;
+  preview.alt = attachment.name;
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "composer-image-remove";
+  removeButton.dataset.attachmentId = attachment.id;
+  removeButton.setAttribute("aria-label", "移除图片");
+  removeButton.title = "移除图片";
+  removeButton.innerHTML =
+    '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  removeButton.addEventListener("click", () => {
+    pendingImageAttachments = pendingImageAttachments.filter((item) => item.id !== attachment.id);
+    renderImageAttachmentUi();
+  });
+
+  card.append(preview, removeButton);
+  return card;
+}
+
+function attachImagesToMessage(
+  messageKey: string,
+  attachments: UiPendingImageAttachment[],
+): void {
+  const state = messagesByKey.get(messageKey);
+  if (!state || state.role !== "user") return;
+  clearMessageAttachments(state);
+  const strip = document.createElement("div");
+  strip.className = "message-image-attachments";
+  for (const attachment of attachments) {
+    const preview = document.createElement("img");
+    preview.className = "message-image-attachment";
+    preview.src = attachment.previewUrl;
+    preview.alt = attachment.name;
+    strip.append(preview);
+  }
+  state.article.insertBefore(strip, state.content);
+  state.attachmentStrip = strip;
+}
+
+function clearMessageAttachments(state: ChatMessageRefs): void {
+  if (!state.attachmentStrip) return;
+  state.attachmentStrip.remove();
+  state.attachmentStrip = undefined;
+}
+
+async function handlePromptPaste(event: ClipboardEvent | Event): Promise<void> {
+  const clipboardData = "clipboardData" in event ? event.clipboardData : undefined;
+  if (!clipboardData?.items?.length) return;
+
+  for (const item of Array.from(clipboardData.items)) {
+    if (!item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    event.preventDefault();
+    if (!activeModelSupportsImages()) {
+      appendTransientMessage("error", "当前模型不支持图片输入");
+      return;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    postUiMessage({
+      type: "store_pasted_image_attachment",
+      dataUrl,
+      mimeType: file.type || "image/png",
+      name: file.name || "pasted-image.png",
+    });
+    return;
+  }
+}
+
+function activeModelSupportsImages(): boolean {
+  const model = resolveActiveModelForThinking();
+  return !!model?.input?.includes("image");
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("无法读取图片数据。"));
+    };
+    reader.onerror = () => reject(new Error("无法读取图片数据。"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function renderSendButton(): void {
   sendButton.dataset.mode = isStreamingPhase ? "stop" : "send";
   sendButton.title = isStreamingPhase ? "停止生成" : "发送消息";
@@ -1411,6 +1576,8 @@ function startFreshConversation(): void {
   hasResolvedConversationState = true;
   resetMessageFeed();
   promptInput.value = "";
+  pendingImageAttachments = [];
+  renderImageAttachmentUi();
   resetComposerHeight(promptInput);
   syncRecentSessionsVisibility();
 }
@@ -1419,6 +1586,8 @@ function beginConversationReplay(): void {
   hasResolvedConversationState = false;
   resetMessageFeed();
   promptInput.value = "";
+  pendingImageAttachments = [];
+  renderImageAttachmentUi();
   resetComposerHeight(promptInput);
   syncRecentSessionsVisibility();
 }

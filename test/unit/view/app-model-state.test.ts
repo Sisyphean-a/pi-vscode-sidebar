@@ -65,6 +65,68 @@ describe("sidebar webview model state", () => {
     expect(modelTrigger.dataset.value).toBe("openai/gpt-5.3-codex");
     expect(modelTrigger.textContent).toContain("5.3 Codex");
   });
+
+  it("shows image attachment action only for models with image input support", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [
+                { provider: "openai", id: "gpt-5", input: ["text", "image"] },
+                { provider: "openai", id: "gpt-4.1-mini", input: ["text"] },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-5" } },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const imageButton = document.getElementById("image-attachment-button") as
+      | HTMLButtonElement
+      | null;
+    expect(imageButton?.disabled).toBe(false);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-4.1-mini" } },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    expect(imageButton?.disabled).toBe(true);
+  });
 });
 
 async function waitForFlush(): Promise<void> {

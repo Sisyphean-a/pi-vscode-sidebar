@@ -4,6 +4,7 @@ import {
   createPendingRequestStore,
   createPiRpcProcessManager,
 } from "../../../src/host/process-manager.ts";
+import type { ProcessEvent } from "../../../src/host/process-manager.ts";
 import { isAgentEventLike } from "../../../src/shared/rpc-types.ts";
 
 describe("createJsonlFramer", () => {
@@ -77,4 +78,81 @@ describe("createPiRpcProcessManager", () => {
     expect(events.length).toBeGreaterThan(0);
     expect(manager.isRunning()).toBe(false);
   });
+
+  it("emits full outbound and inbound rpc payloads for each request", async () => {
+    const manager = createPiRpcProcessManager();
+    const events: ProcessEvent[] = [];
+    manager.onEvent((event) => {
+      events.push(event);
+    });
+
+    await manager.start({
+      executable: process.execPath,
+      args: ["-e", createEchoRpcServerScript()],
+    });
+
+    const response = await manager.send({ type: "prompt", message: "图片里是哪段代码？" }, 1000);
+    await manager.stop();
+
+    expect(response).toMatchObject({
+      type: "response",
+      command: "prompt",
+      success: true,
+    });
+
+    const sentEvent = events.find(
+      (event): event is Extract<ProcessEvent, { type: "rpc_command_sent" }> =>
+        event.type === "rpc_command_sent",
+    );
+    expect(sentEvent).toBeDefined();
+    if (!sentEvent) throw new Error("Missing rpc_command_sent event");
+
+    expect(sentEvent.payload).toEqual({
+      type: "prompt",
+      message: "图片里是哪段代码？",
+      id: sentEvent.id,
+    });
+
+    const responseEvent = events.find(
+      (event): event is Extract<ProcessEvent, { type: "rpc_response" }> =>
+        event.type === "rpc_response",
+    );
+    expect(responseEvent).toBeDefined();
+    if (!responseEvent) throw new Error("Missing rpc_response event");
+
+    expect(responseEvent.payload).toEqual({
+      type: "response",
+      id: sentEvent.id,
+      command: "prompt",
+      success: true,
+      data: {
+        echoed: sentEvent.payload,
+      },
+    });
+  });
 });
+
+function createEchoRpcServerScript(): string {
+  return [
+    "process.stdin.setEncoding('utf8');",
+    "let buffer = '';",
+    "process.stdin.on('data', (chunk) => {",
+    "  buffer += chunk;",
+    "  while (true) {",
+    "    const newlineIndex = buffer.indexOf('\\n');",
+    "    if (newlineIndex < 0) break;",
+    "    const line = buffer.slice(0, newlineIndex).trim();",
+    "    buffer = buffer.slice(newlineIndex + 1);",
+    "    if (!line) continue;",
+    "    const command = JSON.parse(line);",
+    "    process.stdout.write(JSON.stringify({",
+    "      type: 'response',",
+    "      id: command.id,",
+    "      command: command.type,",
+    "      success: true,",
+    "      data: { echoed: command },",
+    "    }) + '\\n');",
+    "  }",
+    "});",
+  ].join("");
+}

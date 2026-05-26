@@ -4,12 +4,12 @@ export type SidebarCommandLocale = "en" | "zh";
 export type SidebarCommandSource = "builtin" | RpcCommandSource;
 
 interface SidebarCommandText {
-  name: string;
   description?: string;
 }
 
 interface BuiltinSidebarCommandDefinition {
   id: string;
+  name: string;
   hint?: string;
   texts: Record<SidebarCommandLocale, SidebarCommandText>;
 }
@@ -27,78 +27,85 @@ export interface SidebarCommandDefinition {
 const BUILTIN_SIDEBAR_COMMANDS: readonly BuiltinSidebarCommandDefinition[] = [
   {
     id: "new",
+    name: "new",
     texts: {
-      en: { name: "new", description: "Start a new session" },
-      zh: { name: "新建", description: "开始新会话" },
+      en: { description: "Start a new session" },
+      zh: { description: "开始新会话" },
     },
   },
   {
     id: "resume",
+    name: "resume",
     texts: {
-      en: { name: "resume", description: "Resume a different session" },
-      zh: { name: "恢复", description: "恢复其他会话" },
+      en: { description: "Resume a different session" },
+      zh: { description: "恢复其他会话" },
     },
   },
   {
     id: "tree",
+    name: "tree",
     texts: {
-      en: { name: "tree", description: "Navigate session tree (switch branches)" },
-      zh: { name: "树", description: "浏览会话树（切换分支）" },
+      en: { description: "Navigate session tree (switch branches)" },
+      zh: { description: "浏览会话树（切换分支）" },
     },
   },
   {
     id: "compact",
+    name: "compact",
     hint: "text",
     texts: {
-      en: { name: "compact", description: "Manually compact the session context" },
-      zh: { name: "压缩", description: "手动压缩当前会话上下文" },
+      en: { description: "Manually compact the session context" },
+      zh: { description: "手动压缩当前会话上下文" },
     },
   },
   {
     id: "model",
+    name: "model",
     texts: {
-      en: { name: "model", description: "Select model (opens selector UI)" },
-      zh: { name: "模型", description: "选择模型（会打开选择器）" },
+      en: { description: "Select model (opens selector UI)" },
+      zh: { description: "选择模型（会打开选择器）" },
     },
   },
   {
     id: "fork",
+    name: "fork",
     texts: {
-      en: { name: "fork", description: "Create a new fork from a previous user message" },
-      zh: { name: "分叉", description: "从之前的用户消息创建新分叉" },
+      en: { description: "Create a new fork from a previous user message" },
+      zh: { description: "从之前的用户消息创建新分叉" },
     },
   },
   {
     id: "clone",
+    name: "clone",
     texts: {
-      en: { name: "clone", description: "Duplicate the current session at the current position" },
-      zh: { name: "克隆", description: "在当前位置复制当前会话" },
+      en: { description: "Duplicate the current session at the current position" },
+      zh: { description: "在当前位置复制当前会话" },
     },
   },
   {
     id: "name",
+    name: "name",
     hint: "text",
     texts: {
-      en: { name: "name", description: "Set session display name" },
-      zh: { name: "命名", description: "设置会话显示名称" },
+      en: { description: "Set session display name" },
+      zh: { description: "设置会话显示名称" },
     },
   },
   {
     id: "export",
+    name: "export",
     hint: "path",
     texts: {
-      en: {
-        name: "export",
-        description: "Export session (HTML default, or specify path: .html/.jsonl)",
-      },
-      zh: { name: "导出", description: "导出会话（默认 HTML，也可指定 .html/.jsonl 路径）" },
+      en: { description: "Export session (HTML default, or specify path: .html/.jsonl)" },
+      zh: { description: "导出会话（默认 HTML，也可指定 .html/.jsonl 路径）" },
     },
   },
   {
     id: "copy",
+    name: "copy",
     texts: {
-      en: { name: "copy", description: "Copy last agent message to clipboard" },
-      zh: { name: "复制", description: "复制最后一条助手消息到剪贴板" },
+      en: { description: "Copy last agent message to clipboard" },
+      zh: { description: "复制最后一条助手消息到剪贴板" },
     },
   },
 ];
@@ -187,23 +194,12 @@ function localizeBuiltinCommand(
   const text = command.texts[locale];
   return {
     id: command.id,
-    name: text.name,
+    name: command.name,
     description: text.description,
     hint: command.hint,
     source: "builtin",
-    aliases: buildAliases(command, locale),
+    aliases: [command.name],
   };
-}
-
-function buildAliases(
-  command: BuiltinSidebarCommandDefinition,
-  locale: SidebarCommandLocale,
-): readonly string[] {
-  const tokens = [command.id];
-  if (locale === "zh") {
-    tokens.unshift(command.texts.zh.name);
-  }
-  return [...new Set(tokens)];
 }
 
 function matchesCommandQuery(command: SidebarCommandDefinition, normalizedQuery: string): boolean {

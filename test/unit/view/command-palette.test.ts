@@ -160,7 +160,7 @@ describe("sidebar command palette", () => {
     expect(dynamicListText).toContain("Show CodeGraph status");
   });
 
-  it("renders built-in slash commands in Chinese when the VS Code language is zh", async () => {
+  it("renders built-in slash commands with English names and Chinese descriptions when the VS Code language is zh", async () => {
     document.documentElement.lang = "zh-CN";
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
@@ -171,15 +171,15 @@ describe("sidebar command palette", () => {
     await import("../../../src/view/webview/app.ts");
 
     const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
-    prompt.value = "/新";
+    prompt.value = "/ne";
     prompt.dispatchEvent(new Event("input", { bubbles: true }));
 
     const listText = document.getElementById("command-palette-list")?.textContent ?? "";
-    expect(listText).toContain("新建");
+    expect(listText).toContain("new");
     expect(listText).toContain("开始新会话");
   });
 
-  it("submits Chinese slash commands using the stable English command id", async () => {
+  it("does not treat localized command names as valid slash commands", async () => {
     document.documentElement.lang = "zh-CN";
     const postedMessages: unknown[] = [];
     (
@@ -206,9 +206,60 @@ describe("sidebar command palette", () => {
         (message) =>
           typeof message === "object" &&
           !!message &&
+          (message as { type?: string }).type === "run_command",
+      ),
+    ).toBe(false);
+  });
+
+  it("waits for IME composition to finish before submitting an English slash command", async () => {
+    document.documentElement.lang = "zh-CN";
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "/model";
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const composingEnter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+    });
+    Object.defineProperty(composingEnter, "isComposing", { value: true });
+    prompt.dispatchEvent(composingEnter);
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          ((message as { type?: string }).type === "run_command" ||
+            (message as { type?: string }).type === "send_prompt"),
+      ),
+    ).toBe(false);
+
+    prompt.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+      }),
+    );
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
           (message as { type?: string; name?: string; rawInput?: string }).type === "run_command" &&
-          (message as { type?: string; name?: string; rawInput?: string }).name === "new" &&
-          (message as { type?: string; name?: string; rawInput?: string }).rawInput === "/新建",
+          (message as { type?: string; name?: string; rawInput?: string }).name === "model" &&
+          (message as { type?: string; name?: string; rawInput?: string }).rawInput === "/model",
       ),
     ).toBe(true);
   });

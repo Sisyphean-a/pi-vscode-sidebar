@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { buildPromptReferencePayload } from "./editor-reference.ts";
+import { extname } from "node:path";
 import * as vscode from "vscode";
 import type { SidebarController } from "../host/controller.ts";
-import { parseUiMessage, type HostToUiMessage } from "./protocol.ts";
+import {
+  parseUiMessage,
+  type HostToUiMessage,
+  type UiPendingImageAttachment,
+} from "./protocol.ts";
 
 export interface CreateSidebarViewProviderOptions {
   extensionUri: vscode.Uri;
+  storageUri?: vscode.Uri;
   controller: SidebarController;
 }
 
@@ -16,7 +22,7 @@ export interface SidebarViewProviderHandle extends vscode.WebviewViewProvider {
 export function createSidebarViewProvider(
   options: CreateSidebarViewProviderOptions,
 ): SidebarViewProviderHandle {
-  return new SidebarViewProvider(options.extensionUri, options.controller);
+  return new SidebarViewProvider(options.extensionUri, options.storageUri, options.controller);
 }
 
 class SidebarViewProvider implements SidebarViewProviderHandle {
@@ -26,6 +32,7 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
+    private readonly storageUri: vscode.Uri | undefined,
     private readonly controller: SidebarController,
   ) {}
 
@@ -52,21 +59,29 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
       }
     });
 
-    view.webview.onDidReceiveMessage((payload: unknown) => {
+    view.webview.onDidReceiveMessage(async (payload: unknown) => {
       const message = parseUiMessage(payload);
       if (!message) {
         void vscode.window.showErrorMessage("侧边栏消息格式无效。");
         return;
       }
       if (message.type === "open_file_reference") {
-        void this.openFileReference(message.path, message.startLine, message.endLine);
+        await this.openFileReference(message.path, message.startLine, message.endLine);
+        return;
+      }
+      if (message.type === "pick_image_attachments") {
+        await this.pickImageAttachments(view);
+        return;
+      }
+      if (message.type === "store_pasted_image_attachment") {
+        await this.storePastedImageAttachment(view, message.dataUrl, message.mimeType, message.name);
         return;
       }
       if (message.type === "ui_ready") {
         this.isWebviewReady = true;
-        void this.flushPendingMessages(view);
+        await this.flushPendingMessages(view);
       }
-      void this.controller.handleUiMessage(message).catch((error) => {
+      await this.controller.handleUiMessage(message).catch((error) => {
         const detail = error instanceof Error ? error.message : String(error);
         void this.post(view, { type: "error", scope: "rpc", message: detail });
       });
@@ -146,6 +161,70 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
     editor.revealRange(new vscode.Range(start, end));
   }
 
+  private async pickImageAttachments(view: vscode.WebviewView): Promise<void> {
+    const selections = await vscode.window.showOpenDialog({
+      canSelectMany: true,
+      canSelectFiles: true,
+      canSelectFolders: false,
+      openLabel: "选择图片",
+      filters: {
+        Images: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
+      },
+    });
+    if (!selections || selections.length === 0) return;
+
+    const attachments = await Promise.all(
+      selections.map((uri) => this.createAttachmentFromFile(uri)),
+    );
+    await this.post(view, {
+      type: "image_attachments_added",
+      data: { attachments },
+    });
+  }
+
+  private async storePastedImageAttachment(
+    view: vscode.WebviewView,
+    dataUrl: string,
+    mimeType: string,
+    name?: string,
+  ): Promise<void> {
+    const extension = mimeTypeToExtension(mimeType);
+    const targetName = name?.trim() || `pasted-image.${extension}`;
+    await this.post(view, {
+      type: "image_attachments_added",
+      data: {
+        attachments: [
+          {
+            id: randomUUID(),
+            name: targetName,
+            previewUrl: dataUrl,
+            image: {
+              type: "image",
+              data: stripDataUrlPrefix(dataUrl, mimeType),
+              mimeType,
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  private async createAttachmentFromFile(uri: vscode.Uri): Promise<UiPendingImageAttachment> {
+    const fileBytes = await vscode.workspace.fs.readFile(uri);
+    const mimeType = extensionToMimeType(extname(uri.fsPath).toLowerCase());
+    const base64Data = bytesToBase64(fileBytes);
+    return {
+      id: randomUUID(),
+      name: basenameFromPath(uri.fsPath),
+      previewUrl: `data:${mimeType};base64,${base64Data}`,
+      image: {
+        type: "image",
+        data: base64Data,
+        mimeType,
+      },
+    };
+  }
+
   private renderHtml(webview: vscode.Webview): string {
     const nonce = randomUUID().replace(/-/g, "");
     const scriptUri = webview.asWebviewUri(
@@ -174,4 +253,37 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
   </body>
 </html>`;
   }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function stripDataUrlPrefix(dataUrl: string, mimeType: string): string {
+  const prefix = `data:${mimeType};base64,`;
+  if (!dataUrl.startsWith(prefix)) {
+    throw new Error("无效的图片数据。");
+  }
+  return dataUrl.slice(prefix.length);
+}
+
+function extensionToMimeType(extension: string): string {
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".bmp") return "image/bmp";
+  return "image/png";
+}
+
+function mimeTypeToExtension(mimeType: string): string {
+  if (mimeType === "image/jpeg") return "jpg";
+  if (mimeType === "image/gif") return "gif";
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/bmp") return "bmp";
+  return "png";
+}
+
+function basenameFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  return normalized.split("/").at(-1) || path;
 }

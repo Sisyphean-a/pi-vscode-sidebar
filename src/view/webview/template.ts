@@ -42,10 +42,25 @@ export const SIDEBAR_TEMPLATE = `
       <div id="command-ui-panel" class="command-ui-panel hidden">
         <div id="command-ui-list" class="command-ui-list"></div>
       </div>
+      <div id="image-attachment-list" class="image-attachment-list hidden"></div>
       <textarea id="prompt-input" rows="1" placeholder="继续提问"></textarea>
       <div id="command-result" class="command-result hidden"></div>
       <div class="composer-toolbar">
         <div id="composer-meta" class="composer-meta">
+          <button
+            id="image-attachment-button"
+            type="button"
+            class="icon-action composer-icon-button"
+            title="添加图片"
+            aria-label="添加图片"
+            disabled
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+              <circle cx="9" cy="10" r="1.5"></circle>
+              <path d="M21 15l-4.5-4.5L7 20"></path>
+            </svg>
+          </button>
           <div id="model-picker" class="composer-picker">
             <button
               id="model-picker-trigger"

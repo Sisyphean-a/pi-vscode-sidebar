@@ -18,8 +18,14 @@ export interface RpcSlashCommand {
   sourceInfo: RpcSourceInfo;
 }
 
+export interface RpcImageContent {
+  type: "image";
+  data: string;
+  mimeType: string;
+}
+
 export type RpcCommand =
-  | { id?: string; type: "prompt"; message: string; images?: Array<{ path: string }> }
+  | { id?: string; type: "prompt"; message: string; images?: RpcImageContent[] }
   | { id?: string; type: "steer"; message: string }
   | { id?: string; type: "follow_up"; message: string }
   | { id?: string; type: "abort" }

@@ -31,8 +31,8 @@ export interface StartProcessOptions {
 export type ProcessEvent =
   | RpcOutputMessage
   | { type: "stderr"; message: string }
-  | { type: "rpc_command_sent"; id: string; command: string }
-  | { type: "rpc_response"; id?: string; command: string; success: boolean }
+  | { type: "rpc_command_sent"; id: string; command: string; payload: RpcCommand & { id: string } }
+  | { type: "rpc_response"; id?: string; command: string; success: boolean; payload: RpcResponse }
   | { type: "process_exit"; code: number | null; signal: NodeJS.Signals | null };
 
 export interface PiRpcProcessManager {
@@ -190,7 +190,7 @@ class NodePiRpcProcessManager implements PiRpcProcessManager {
     const payload = { ...command, id };
     const pending = this.pending.register(id, timeoutMs).then((value) => value as RpcResponse);
 
-    this.events.emit({ type: "rpc_command_sent", id, command: command.type });
+    this.events.emit({ type: "rpc_command_sent", id, command: command.type, payload });
     child.stdin.write(`${JSON.stringify(payload)}\n`);
     return pending;
   }
@@ -227,6 +227,7 @@ class NodePiRpcProcessManager implements PiRpcProcessManager {
         id: payload.id,
         command: payload.command,
         success: payload.success,
+        payload,
       });
       if (payload.id) this.pending.resolve(payload.id, payload);
       else this.events.emit(payload);

@@ -3,6 +3,7 @@ import { createBridge } from "./bridge/extension-bridge.ts";
 import { createSidebarController } from "./host/controller.ts";
 import { createLogger, normalizeLogLevel, type Logger } from "./host/logger.ts";
 import { createPiRpcProcessManager } from "./host/process-manager.ts";
+import { attachRpcTraceLogging } from "./host/rpc-trace-logger.ts";
 import { createRpcClient } from "./host/rpc-client.ts";
 import { createRpcSessionStateStore } from "./host/state-store.ts";
 import {
@@ -54,6 +55,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const provider = createSidebarViewProvider({
     extensionUri: context.extensionUri,
+    storageUri: context.globalStorageUri,
     controller,
   });
 
@@ -93,35 +95,7 @@ function setupTraceLogging(
     },
   });
   logger.info({ scope: "extension", message: `logger initialized at level=${logLevel}` });
-  const unsubscribeTrace = processManager.onEvent((event) => {
-    if (event.type === "rpc_command_sent") {
-      logger.debug({
-        scope: "rpc",
-        correlationId: event.id,
-        message: "rpc command sent",
-        details: { command: event.command },
-      });
-    } else if (event.type === "rpc_response") {
-      logger.debug({
-        scope: "rpc",
-        correlationId: event.id,
-        message: "rpc response received",
-        details: { command: event.command, success: event.success },
-      });
-    } else if (event.type === "process_exit") {
-      logger.error({
-        scope: "rpc",
-        message: "rpc process exited",
-        details: { code: event.code ?? null, signal: event.signal ?? null },
-      });
-    } else if (event.type === "stderr") {
-      logger.warn({
-        scope: "rpc",
-        message: "rpc stderr",
-        details: { message: event.message },
-      });
-    }
-  });
+  const unsubscribeTrace = attachRpcTraceLogging(processManager, logger);
   context.subscriptions.push({ dispose: unsubscribeTrace });
   return logger;
 }

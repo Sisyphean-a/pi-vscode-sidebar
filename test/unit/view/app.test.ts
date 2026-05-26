@@ -679,6 +679,70 @@ describe("sidebar webview app", () => {
     expect(userBubbles[0]?.textContent).toContain("帮我看下这个函数");
   });
 
+  it("keeps sent image previews visible inside the user message bubble after sending", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [{ provider: "openai", id: "gpt-5", input: ["text", "image"] }],
+            },
+          },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-5" } },
+          },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "image_attachments_added",
+          data: {
+            attachments: [
+              {
+                id: "image-1",
+                name: "one.png",
+                previewUrl: "data:image/png;base64,AAAA",
+                image: { type: "image", data: "AAAA", mimeType: "image/png" },
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "带图消息";
+    (document.getElementById("send-button") as HTMLButtonElement).click();
+    await waitForFlush();
+
+    expect(
+      document.querySelectorAll("#message-feed .chat-message.role-user .message-image-attachment"),
+    ).toHaveLength(1);
+  });
+
   it("does not render duplicated connection helper copy under the topbar", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
@@ -1949,6 +2013,242 @@ describe("sidebar webview app", () => {
       provider: "anthropic",
       modelId: "claude-opus-4",
     });
+  });
+
+  it("renders image attachment previews, removes them, and sends image paths with the prompt", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [{ provider: "openai", id: "gpt-5", input: ["text", "image"] }],
+            },
+          },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-5" } },
+          },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "image_attachments_added",
+          data: {
+            attachments: [
+              {
+                id: "image-1",
+                name: "one.png",
+                previewUrl: "data:image/png;base64,AAAA",
+                image: { type: "image", data: "AAAA", mimeType: "image/png" },
+              },
+              {
+                id: "image-2",
+                name: "two.png",
+                previewUrl: "data:image/png;base64,BBBB",
+                image: { type: "image", data: "BBBB", mimeType: "image/png" },
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    expect(document.querySelectorAll(".composer-image-attachment")).toHaveLength(2);
+    expect(document.querySelectorAll(".composer-image-name")).toHaveLength(0);
+    expect(document.querySelectorAll('.composer-image-remove[aria-label="移除图片"]')).toHaveLength(
+      2,
+    );
+    expect(document.querySelector(".composer-image-remove")?.textContent?.trim()).toBe("");
+
+    (
+      document.querySelector(
+        '.composer-image-remove[data-attachment-id="image-1"]',
+      ) as HTMLButtonElement | null
+    )?.click();
+    await waitForFlush();
+
+    expect(document.querySelectorAll(".composer-image-attachment")).toHaveLength(1);
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "请描述图片";
+    (document.getElementById("send-button") as HTMLButtonElement).click();
+    await waitForFlush();
+
+    const sendPromptMessage = postedMessages.find(
+      (message) =>
+        typeof message === "object" &&
+        !!message &&
+        (message as { type?: string }).type === "send_prompt",
+    ) as { text?: string; images?: Array<{ type: string; data: string; mimeType: string }> }
+      | undefined;
+
+    expect(sendPromptMessage).toMatchObject({
+      text: "请描述图片",
+      images: [{ type: "image", data: "BBBB", mimeType: "image/png" }],
+    });
+    expect(document.querySelectorAll(".composer-image-attachment")).toHaveLength(0);
+  });
+
+  it("requests image picking from the host when the image action is clicked", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [{ provider: "openai", id: "gpt-5", input: ["text", "image"] }],
+            },
+          },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-5" } },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    (document.getElementById("image-attachment-button") as HTMLButtonElement | null)?.click();
+    await waitForFlush();
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "pick_image_attachments",
+      ),
+    ).toBe(true);
+  });
+
+  it("shows a visible error when pasting an image into a text-only model", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    class MockFileReader {
+      result: string | ArrayBuffer | null = null;
+      onload: (() => void) | null = null;
+
+      readAsDataURL(): void {
+        this.result = "data:image/png;base64,AAAA";
+        this.onload?.();
+      }
+    }
+
+    (
+      globalThis as unknown as { FileReader: typeof MockFileReader }
+    ).FileReader = MockFileReader as never;
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [{ provider: "openai", id: "gpt-4.1-mini", input: ["text"] }],
+            },
+          },
+        },
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-4.1-mini" } },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    const clipboardFile = new File(["png"], "clipboard.png", { type: "image/png" });
+    const clipboardData = {
+      items: [
+        {
+          type: "image/png",
+          getAsFile() {
+            return clipboardFile;
+          },
+        },
+      ],
+    };
+
+    const pasteEvent = new Event("paste", { bubbles: true, cancelable: true }) as Event & {
+      clipboardData: typeof clipboardData;
+    };
+    pasteEvent.clipboardData = clipboardData;
+    prompt.dispatchEvent(pasteEvent);
+    await waitForFlush();
+
+    expect(document.querySelector("#message-feed")?.textContent).toContain("当前模型不支持图片输入");
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "store_pasted_image_attachment",
+      ),
+    ).toBe(false);
   });
 });
 

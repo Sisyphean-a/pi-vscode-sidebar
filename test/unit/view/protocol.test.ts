@@ -6,13 +6,13 @@ describe("parseUiMessage", () => {
     const parsed = parseUiMessage({
       type: "send_prompt",
       text: "hello",
-      images: [{ path: "a.png" }],
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
     });
 
     expect(parsed).toEqual({
       type: "send_prompt",
       text: "hello",
-      images: [{ path: "a.png" }],
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
     });
   });
 
@@ -62,10 +62,39 @@ describe("parseUiMessage", () => {
     });
   });
 
+  it("accepts pick_image_attachments payload", () => {
+    const parsed = parseUiMessage({
+      type: "pick_image_attachments",
+    });
+
+    expect(parsed).toEqual({
+      type: "pick_image_attachments",
+    });
+  });
+
+  it("accepts store_pasted_image_attachment payload", () => {
+    const parsed = parseUiMessage({
+      type: "store_pasted_image_attachment",
+      dataUrl: "data:image/png;base64,AAAA",
+      mimeType: "image/png",
+      name: "clipboard.png",
+    });
+
+    expect(parsed).toEqual({
+      type: "store_pasted_image_attachment",
+      dataUrl: "data:image/png;base64,AAAA",
+      mimeType: "image/png",
+      name: "clipboard.png",
+    });
+  });
+
   it("rejects malformed payloads", () => {
     expect(parseUiMessage({})).toBeUndefined();
     expect(parseUiMessage({ type: "send_prompt" })).toBeUndefined();
     expect(parseUiMessage({ type: "run_command", rawInput: "/compact" })).toBeUndefined();
+    expect(parseUiMessage({ type: "store_pasted_image_attachment", mimeType: "image/png" })).toBe(
+      undefined,
+    );
     expect(parseUiMessage({ type: "unknown" })).toBeUndefined();
     expect(parseUiMessage("not-an-object")).toBeUndefined();
   });

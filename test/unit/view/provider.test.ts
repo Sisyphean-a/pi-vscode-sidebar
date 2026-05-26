@@ -46,6 +46,7 @@ vi.mock("vscode", () => {
     window: {
       activeTextEditor: undefined,
       showErrorMessage: vi.fn(),
+      showOpenDialog: vi.fn(async () => []),
       showTextDocument: vi.fn(async () => ({
         selection: undefined,
         revealRange: vi.fn(),
@@ -60,6 +61,11 @@ vi.mock("vscode", () => {
         return path.replace("E:/github/pi-vscode-sidebar/", "");
       },
       openTextDocument: vi.fn(async (uri) => ({ uri })),
+      fs: {
+        readFile: vi.fn(async () => new Uint8Array([137, 80, 78, 71])),
+        writeFile: vi.fn(async () => {}),
+        createDirectory: vi.fn(async () => {}),
+      },
     },
   };
 });
@@ -295,5 +301,124 @@ describe("SidebarViewProvider", () => {
 
     expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
     expect(vscode.window.showTextDocument).toHaveBeenCalled();
+  });
+
+  it("posts picked image attachments back to the webview", async () => {
+    const vscode = await import("vscode");
+    const postedMessages: unknown[] = [];
+    let receivedHandler: ((payload: unknown) => void) | undefined;
+
+    (
+      vscode.window as never as {
+        showOpenDialog: ReturnType<typeof vi.fn>;
+      }
+    ).showOpenDialog = vi.fn(async () => [
+      { fsPath: "C:/images/cat.png", path: "C:/images/cat.png" },
+    ]);
+
+    const provider: SidebarViewProviderHandle = createSidebarViewProvider({
+      extensionUri: { path: "ext", fsPath: "ext" } as never,
+      controller: {
+        connect() {
+          return () => {};
+        },
+        async handleUiMessage() {},
+        async dispose() {},
+      },
+    });
+
+    provider.resolveWebviewView(
+      {
+        webview: {
+          options: {},
+          html: "",
+          asWebviewUri(uri: unknown) {
+            return uri as never;
+          },
+          onDidReceiveMessage(handler: (payload: unknown) => void) {
+            receivedHandler = handler;
+            return { dispose() {} };
+          },
+          async postMessage(message: unknown) {
+            postedMessages.push(message);
+            return true;
+          },
+        },
+        onDidDispose() {},
+      } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await receivedHandler?.({ type: "ui_ready" });
+    await receivedHandler?.({ type: "pick_image_attachments", correlationId: "pick-1" });
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "image_attachments_added",
+      ),
+    ).toBe(true);
+  });
+
+  it("stores pasted image attachments and posts them back to the webview", async () => {
+    const vscode = await import("vscode");
+    const postedMessages: unknown[] = [];
+    let receivedHandler: ((payload: unknown) => void) | undefined;
+
+    const provider: SidebarViewProviderHandle = createSidebarViewProvider({
+      extensionUri: { path: "ext", fsPath: "ext" } as never,
+      controller: {
+        connect() {
+          return () => {};
+        },
+        async handleUiMessage() {},
+        async dispose() {},
+      },
+    });
+
+    provider.resolveWebviewView(
+      {
+        webview: {
+          options: {},
+          html: "",
+          asWebviewUri(uri: unknown) {
+            return uri as never;
+          },
+          onDidReceiveMessage(handler: (payload: unknown) => void) {
+            receivedHandler = handler;
+            return { dispose() {} };
+          },
+          async postMessage(message: unknown) {
+            postedMessages.push(message);
+            return true;
+          },
+        },
+        onDidDispose() {},
+      } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await receivedHandler?.({ type: "ui_ready" });
+    await receivedHandler?.({
+      type: "store_pasted_image_attachment",
+      correlationId: "paste-1",
+      dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      mimeType: "image/png",
+      name: "clipboard.png",
+    });
+
+    expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "image_attachments_added",
+      ),
+    ).toBe(true);
   });
 });

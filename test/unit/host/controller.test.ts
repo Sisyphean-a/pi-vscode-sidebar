@@ -8,6 +8,7 @@ function createHarness(options?: {
   extensionUiTimeoutMs?: number;
   recentSessions?: RecentSessionSummary[];
   commandData?: Partial<Record<string, unknown>>;
+  failedCommands?: Partial<Record<string, string>>;
 }) {
   const emitted: unknown[] = [];
   let listener: ((event: ProcessEvent) => void) | undefined;
@@ -37,6 +38,15 @@ function createHarness(options?: {
     rpcClient: {
       async send(command) {
         sentCommands.push(command);
+        const commandError = options?.failedCommands?.[command.type];
+        if (commandError) {
+          return {
+            type: "response",
+            command: command.type,
+            success: false,
+            error: commandError,
+          };
+        }
         return {
           type: "response",
           command: command.type,
@@ -134,12 +144,14 @@ describe("SidebarController", () => {
       type: "rpc_command_sent",
       id: "rpc-1",
       command: "prompt",
+      payload: { type: "prompt", id: "rpc-1", message: "hello" },
     });
     harness.emitProcessEvent({
       type: "rpc_response",
       id: "rpc-1",
       command: "prompt",
       success: true,
+      payload: { type: "response", id: "rpc-1", command: "prompt", success: true },
     });
 
     const forwardedEvents = harness.emitted.filter(
@@ -389,6 +401,61 @@ describe("SidebarController", () => {
           (item as { type?: string; scope?: string }).scope === "ui",
       ),
     ).toBe(false);
+  });
+
+  it("forwards image content blocks when sending prompts", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "send_prompt",
+      text: "describe this image",
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "prompt",
+      message: "describe this image",
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+    });
+  });
+
+  it("returns to idle and emits rpc error when prompt command fails immediately", async () => {
+    const harness = createHarness({
+      failedCommands: {
+        prompt: "image input is not supported by the active backend",
+      },
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "send_prompt",
+      text: "describe this image",
+      images: [{ type: "image", data: "AAAA", mimeType: "image/png" }],
+      correlationId: "prompt-fail-1",
+    });
+
+    expect(
+      harness.emitted.some(
+        (item) =>
+          typeof item === "object" &&
+          item &&
+          (item as { type?: string; scope?: string; message?: string }).type === "error" &&
+          (item as { scope?: string }).scope === "rpc" &&
+          ((item as { message?: string }).message ?? "").includes(
+            "image input is not supported by the active backend",
+          ),
+      ),
+    ).toBe(true);
+
+    const lastState = [...harness.emitted]
+      .reverse()
+      .find(
+        (item) =>
+          typeof item === "object" &&
+          item &&
+          (item as { type?: string }).type === "state",
+      ) as { data?: { view?: { phase?: string } } } | undefined;
+
+    expect(lastState?.data?.view?.phase).toBe("idle");
   });
 
   it("keeps prompt blocked while waiting for blocking extension ui input", async () => {
