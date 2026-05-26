@@ -1,5 +1,5 @@
-const MIN_PROMPT_HEIGHT_PX = 72;
-const MAX_PROMPT_HEIGHT_PX = 220;
+const MIN_PROMPT_HEIGHT_PX = 26;
+const MAX_PROMPT_HEIGHT_PX = 160;
 
 export function syncComposerHeight(textarea: HTMLTextAreaElement): void {
   const minHeight = `${MIN_PROMPT_HEIGHT_PX}px`;

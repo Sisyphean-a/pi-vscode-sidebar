@@ -242,6 +242,7 @@ function syncThinkingLevel(rpc: Record<string, unknown> | undefined): void {
 }
 
 function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
+  if (!rpc || !Object.hasOwn(rpc, "model")) return;
   const modelRecord = asRecord(rpc?.model);
   const provider = readString(modelRecord?.provider);
   const modelId = readString(modelRecord?.id);

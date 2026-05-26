@@ -115,6 +115,7 @@ describe("SidebarViewProvider", () => {
       {} as never,
     );
 
+    await receivedHandler?.({ type: "ui_ready" });
     await provider.insertActiveEditorReference();
 
     expect(
@@ -127,6 +128,76 @@ describe("SidebarViewProvider", () => {
       ),
     ).toBe(true);
     expect(receivedHandler).toBeTypeOf("function");
+  });
+
+  it("queues selection insertion until the webview is resolved and ready", async () => {
+    const vscode = await import("vscode");
+    const postedMessages: unknown[] = [];
+    let receivedHandler: ((payload: unknown) => void) | undefined;
+
+    const provider: SidebarViewProviderHandle = createSidebarViewProvider({
+      extensionUri: { path: "ext", fsPath: "ext" } as never,
+      controller: {
+        connect() {
+          return () => {};
+        },
+        async handleUiMessage() {},
+        async dispose() {},
+      },
+    });
+
+    (vscode.window as never as { activeTextEditor: unknown }).activeTextEditor = {
+      document: {
+        uri: {
+          fsPath: "E:/github/pi-vscode-sidebar/src/pi/env.ts",
+          path: "E:/github/pi-vscode-sidebar/src/pi/env.ts",
+        },
+        getText: (selection?: { start?: { line: number }; end?: { line: number } }) =>
+          selection ? "line2\nline3" : "line1\nline2\nline3\n",
+        languageId: "typescript",
+      },
+      selection: new vscode.Selection(new vscode.Position(1, 0), new vscode.Position(2, 5)),
+      selections: [new vscode.Selection(new vscode.Position(1, 0), new vscode.Position(2, 5))],
+      revealRange() {},
+    } as never;
+
+    await provider.insertActiveEditorReference();
+    expect(postedMessages).toHaveLength(0);
+
+    provider.resolveWebviewView(
+      {
+        webview: {
+          options: {},
+          html: "",
+          asWebviewUri(uri: unknown) {
+            return uri as never;
+          },
+          onDidReceiveMessage(handler: (payload: unknown) => void) {
+            receivedHandler = handler;
+            return { dispose() {} };
+          },
+          async postMessage(message: unknown) {
+            postedMessages.push(message);
+          },
+        },
+        onDidDispose() {},
+      } as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(postedMessages).toHaveLength(0);
+    await receivedHandler?.({ type: "ui_ready" });
+
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "insert_prompt_reference" &&
+          (message as { data?: { reference?: string } }).data?.reference === "@src/pi/env.ts:2-3",
+      ),
+    ).toBe(true);
   });
 
   it("opens file reference location when webview asks for it", async () => {

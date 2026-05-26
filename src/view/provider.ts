@@ -21,6 +21,8 @@ export function createSidebarViewProvider(
 
 class SidebarViewProvider implements SidebarViewProviderHandle {
   private view: vscode.WebviewView | undefined;
+  private isWebviewReady = false;
+  private readonly pendingMessages: HostToUiMessage[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -29,6 +31,7 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
 
   resolveWebviewView(view: vscode.WebviewView): void | Thenable<void> {
     this.view = view;
+    this.isWebviewReady = false;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -41,7 +44,13 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
     const disconnect = this.controller.connect((message) => {
       void this.post(view, message);
     });
-    view.onDidDispose(disconnect);
+    view.onDidDispose(() => {
+      disconnect();
+      if (this.view === view) {
+        this.view = undefined;
+        this.isWebviewReady = false;
+      }
+    });
 
     view.webview.onDidReceiveMessage((payload: unknown) => {
       const message = parseUiMessage(payload);
@@ -53,6 +62,10 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
         void this.openFileReference(message.path, message.startLine, message.endLine);
         return;
       }
+      if (message.type === "ui_ready") {
+        this.isWebviewReady = true;
+        void this.flushPendingMessages(view);
+      }
       void this.controller.handleUiMessage(message).catch((error) => {
         const detail = error instanceof Error ? error.message : String(error);
         void this.post(view, { type: "error", scope: "rpc", message: detail });
@@ -62,8 +75,7 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
 
   async insertActiveEditorReference(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
-    const view = this.view;
-    if (!editor || !view) {
+    if (!editor) {
       return;
     }
 
@@ -88,10 +100,28 @@ class SidebarViewProvider implements SidebarViewProviderHandle {
       languageId: editor.document.languageId,
     });
 
-    await this.post(view, {
+    await this.postOrQueue({
       type: "insert_prompt_reference",
       data: payload,
     });
+  }
+
+  private async postOrQueue(message: HostToUiMessage): Promise<void> {
+    const view = this.view;
+    if (!view || !this.isWebviewReady) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    await this.post(view, message);
+  }
+
+  private async flushPendingMessages(view: vscode.WebviewView): Promise<void> {
+    if (!this.isWebviewReady || this.pendingMessages.length === 0) return;
+    while (this.pendingMessages.length > 0) {
+      const nextMessage = this.pendingMessages.shift();
+      if (!nextMessage) continue;
+      await this.post(view, nextMessage);
+    }
   }
 
   private async post(view: vscode.WebviewView, message: HostToUiMessage): Promise<void> {

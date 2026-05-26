@@ -36,7 +36,7 @@ interface ActivityGroupRefs {
 interface ActivityEntryRefs {
   item: HTMLLIElement;
   label: HTMLSpanElement;
-  body: HTMLDivElement;
+  body: HTMLElement;
   detail?: HTMLDetailsElement;
   detailSummary?: HTMLElement;
   detailPre?: HTMLPreElement;
@@ -167,31 +167,28 @@ export function createActivityTranscript(options: ActivityTranscriptOptions): Ac
     detailSummary: string | undefined,
   ): void {
     if (!detail?.trim()) {
-      entry.detail?.remove();
-      entry.detail = undefined;
-      entry.detailSummary = undefined;
-      entry.detailPre = undefined;
+      restoreInlineLabel(entry);
       return;
     }
 
     if (!entry.detail || !entry.detailSummary || !entry.detailPre) {
-      entry.detail?.remove();
-      entry.detail = undefined;
       const details = document.createElement("details");
       const summary = document.createElement("summary");
       const pre = document.createElement("pre");
       details.className = "chat-activity-item-detail";
       summary.className = "chat-activity-item-detail-summary";
       pre.className = "chat-activity-item-detail-pre";
+      summary.append(entry.label);
       details.append(summary, pre);
       details.open = false;
-      entry.item.append(details);
+      entry.item.replaceChildren(details);
+      entry.body = summary;
       entry.detail = details;
       entry.detailSummary = summary;
       entry.detailPre = pre;
     }
 
-    entry.detailSummary.textContent = detailSummary ?? "查看详情";
+    entry.detailSummary.title = detailSummary ?? "展开详情";
     entry.detailPre.textContent = detail;
   }
 
@@ -213,6 +210,18 @@ export function createActivityTranscript(options: ActivityTranscriptOptions): Ac
       return;
     }
     collapseGroup(group);
+  }
+
+  function restoreInlineLabel(entry: ActivityEntryRefs): void {
+    if (!entry.detail) return;
+    const body = document.createElement("div");
+    body.className = "chat-activity-item-body";
+    body.append(entry.label);
+    entry.item.replaceChildren(body);
+    entry.body = body;
+    entry.detail = undefined;
+    entry.detailSummary = undefined;
+    entry.detailPre = undefined;
   }
 }
 

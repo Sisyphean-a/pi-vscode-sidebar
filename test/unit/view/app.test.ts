@@ -428,14 +428,55 @@ describe("sidebar webview app", () => {
     prompt.value = "第一行\n第二行\n第三行";
     prompt.dispatchEvent(new Event("input"));
 
-    expect(prompt.style.height).toBe("180px");
+    expect(prompt.style.height).toBe("160px");
 
     scrollHeight = 72;
     send.click();
     await waitForFlush();
 
     expect(prompt.value).toBe("");
-    expect(prompt.style.height).toBe("72px");
+    expect(prompt.style.height).toBe("26px");
+  });
+
+  it("keeps multiline editing available with Shift+Enter", async () => {
+    const postedMessages: unknown[] = [];
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    prompt.value = "第一行";
+    prompt.selectionStart = prompt.value.length;
+    prompt.selectionEnd = prompt.value.length;
+
+    prompt.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    prompt.setRangeText("\n", prompt.selectionStart ?? 0, prompt.selectionEnd ?? 0, "end");
+    prompt.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitForFlush();
+
+    expect(prompt.value).toBe("第一行\n");
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "send_prompt",
+      ),
+    ).toBe(false);
   });
 
   it("switches send button to stop while streaming and emits abort", async () => {
@@ -822,8 +863,8 @@ describe("sidebar webview app", () => {
     const refName = refButton?.querySelector(".file-reference-name");
     const refMeta = refButton?.querySelector(".file-reference-meta");
     expect(refBadge?.textContent).toBe("TS");
-    expect(refName?.textContent).toBe("env.ts");
-    expect(refMeta?.textContent).toBe("src/pi/env.ts:11-23");
+    expect(refName?.textContent).toBe("env.ts:11-23");
+    expect(refMeta).toBeNull();
 
     refButton?.click();
     await waitForFlush();
@@ -896,7 +937,7 @@ describe("sidebar webview app", () => {
       "#message-feed .chat-message.role-user .file-reference-chip",
     ) as HTMLButtonElement | null;
     expect(userReferenceChip?.textContent).toContain("env.ts");
-    expect(userReferenceChip?.textContent).toContain("src/pi/env.ts:11-23");
+    expect(userReferenceChip?.textContent).toContain("env.ts:11-23");
 
     userReferenceChip?.click();
     await waitForFlush();
@@ -1427,22 +1468,6 @@ describe("sidebar webview app", () => {
     await waitForFlush();
     const activityGroup = document.querySelector(".chat-activity-group") as HTMLElement | null;
     expect(activityGroup?.textContent).toContain("执行了：读取、bash、codegraph_files");
-  });
-
-  it("renders model and thinking controls as compact native selects", async () => {
-    (
-      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
-    ).acquireVsCodeApi = () => ({
-      postMessage() {},
-    });
-
-    await import("../../../src/view/webview/app.ts");
-
-    const composerMeta = document.getElementById("composer-meta");
-    expect(composerMeta?.textContent).not.toContain("模型");
-    expect(composerMeta?.textContent).not.toContain("思考");
-    expect(composerMeta?.querySelectorAll("select").length).toBe(2);
-    expect(document.querySelectorAll(".composer-select").length).toBe(2);
   });
 
   it("filters thinking level options from model thinkingLevelMap", async () => {

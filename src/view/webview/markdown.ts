@@ -1,6 +1,6 @@
 import { escapeHtml } from "./ui-text.ts";
 
-const FILE_REFERENCE_PATTERN = /@([^:\s]+):(\d+)(?:-(\d+))?/g;
+const FILE_REFERENCE_PATTERN = /@((?:[\w.-]+\/)*[\w.-]+\.[\w-]+)(?::(\d+)(?:-(\d+))?)?/g;
 const ORDERED_LIST_PATTERN = /^(\d+)\.\s+(.+)$/;
 const UNORDERED_LIST_PATTERN = /^-\s+(.+)$/;
 const HEADING_PATTERN = /^(#{1,6})\s+(.+)$/;
@@ -235,18 +235,17 @@ function renderReferenceAwareText(text: string): string {
     rendered += escapeHtml(text.slice(lastIndex, start));
 
     const fullPath = match[1] ?? "";
-    const startLine = match[2] ?? "";
+    const startLine = match[2];
     const endLine = match[3];
     const fileName = fullPath.split("/").at(-1) ?? fullPath;
-    const directoryPath = fullPath.includes("/")
-      ? (fullPath.slice(0, fullPath.lastIndexOf("/")) || ".")
-      : ".";
-    const displayPath = endLine
-      ? `${directoryPath}:${startLine}-${endLine}`
-      : `${directoryPath}:${startLine}`;
+    const displayName = startLine
+      ? endLine
+        ? `${fileName}:${startLine}-${endLine}`
+        : `${fileName}:${startLine}`
+      : fileName;
     const badge = resolveReferenceBadge(fileName);
 
-    rendered += `<button type="button" class="file-reference-chip" data-path="${escapeHtml(fullPath)}" data-start-line="${escapeHtml(startLine)}"${endLine ? ` data-end-line="${escapeHtml(endLine)}"` : ""}><span class="file-reference-badge">${escapeHtml(badge)}</span><span class="file-reference-main"><span class="file-reference-name">${escapeHtml(fileName)}</span><span class="file-reference-meta">${escapeHtml(displayPath)}</span></span></button>`;
+    rendered += `<button type="button" class="file-reference-chip" data-path="${escapeHtml(fullPath)}" data-start-line="${escapeHtml(startLine ?? "1")}"${endLine ? ` data-end-line="${escapeHtml(endLine)}"` : ""}><span class="file-reference-badge">${escapeHtml(badge)}</span><span class="file-reference-main"><span class="file-reference-name">${escapeHtml(displayName)}</span></span></button>`;
     lastIndex = start + fullMatch.length;
   }
 

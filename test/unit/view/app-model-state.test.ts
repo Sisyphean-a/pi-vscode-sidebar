@@ -1,0 +1,72 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+describe("sidebar webview model state", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    document.body.innerHTML = `<div id="app"></div>`;
+  });
+
+  it("keeps the current model label when streaming state omits rpc model details", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_available_models",
+            data: {
+              models: [{ provider: "openai", id: "gpt-5.3-codex", name: "GPT-5.3-Codex" }],
+            },
+          },
+        },
+      }),
+    );
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: { model: { provider: "openai", id: "gpt-5.3-codex" } },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
+    expect(modelSelect.value).toBe("openai/gpt-5.3-codex");
+    expect(modelSelect.selectedOptions[0]?.textContent).toBe("5.3 Codex");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "streaming" },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    expect(modelSelect.value).toBe("openai/gpt-5.3-codex");
+    expect(modelSelect.selectedOptions[0]?.textContent).toBe("5.3 Codex");
+  });
+});
+
+async function waitForFlush(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 40));
+}

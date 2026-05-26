@@ -20,7 +20,7 @@ export const SIDEBAR_TEMPLATE = `
     </section>
 
     <footer class="composer">
-      <textarea id="prompt-input" rows="3" placeholder="继续提问"></textarea>
+      <textarea id="prompt-input" rows="1" placeholder="继续提问"></textarea>
       <div class="composer-toolbar">
         <div id="composer-meta" class="composer-meta">
           <select id="model-select" class="composer-select" title="切换模型" disabled>
