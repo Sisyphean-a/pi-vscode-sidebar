@@ -20,14 +20,26 @@ describe("composer layout source", () => {
     );
   });
 
-  it("renders model controls as plain clickable text without arrow shells", () => {
+  it("renders model controls as custom text triggers instead of native selects", () => {
     const styles = readFileSync(
       new URL("../../../src/view/webview/styles.css", import.meta.url),
       "utf8",
     );
 
-    expect(SIDEBAR_TEMPLATE).not.toContain("composer-select-shell");
-    expect(styles).not.toMatch(/\.composer-select-shell::after/);
+    expect(SIDEBAR_TEMPLATE).not.toContain('<select id="model-select"');
+    expect(SIDEBAR_TEMPLATE).not.toContain('<select id="thinking-level-select"');
+    expect(SIDEBAR_TEMPLATE).toContain('id="model-picker-trigger"');
+    expect(SIDEBAR_TEMPLATE).toContain('id="thinking-level-picker-trigger"');
+    expect(styles).toMatch(/\.composer-picker-trigger\s*\{/);
+  });
+
+  it("allows picker panels to overflow above the composer meta row", () => {
+    const styles = readFileSync(
+      new URL("../../../src/view/webview/styles.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.composer-meta\s*\{[\s\S]*overflow:\s*visible;/);
   });
 
   it("prevents horizontal scrolling and removes the inner focus outline from the prompt textarea", () => {

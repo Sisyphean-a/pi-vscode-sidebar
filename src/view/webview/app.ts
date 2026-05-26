@@ -1,5 +1,6 @@
 import { createActivityTranscript } from "./activity-transcript.ts";
 import { resetComposerHeight, syncComposerHeight } from "./composer.ts";
+import { createComposerPicker } from "./composer-picker.ts";
 import { createExtensionUiRenderer } from "./extension-ui.ts";
 import { renderAssistantMarkdown, renderPlainTextWithReferences } from "./markdown.ts";
 import { createRecentSessionsPanel } from "./recent-sessions.ts";
@@ -53,14 +54,37 @@ if (!root) {
 
 root.innerHTML = SIDEBAR_TEMPLATE;
 
-const modelSelect = expectElement<HTMLSelectElement>("model-select");
 const promptInput = expectElement<HTMLTextAreaElement>("prompt-input");
 const sendButton = expectElement<HTMLButtonElement>("send-button");
 const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
 const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
-const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
 const messageFeed = expectElement<HTMLElement>("message-feed");
+const modelPicker = createComposerPicker({
+  root: expectElement<HTMLElement>("model-picker"),
+  trigger: expectElement<HTMLButtonElement>("model-picker-trigger"),
+  panel: expectElement<HTMLElement>("model-picker-panel"),
+  list: expectElement<HTMLElement>("model-picker-list"),
+  onChange(value) {
+    const model = availableModelsByValue.get(value);
+    if (!model) return;
+    pendingModelValue = formatModelValue(model);
+    appendInlineNote(`已请求切换模型到 ${formatModelValue(model)}`);
+    renderModelPicker();
+    postUiMessage({ type: "set_model", provider: model.provider, modelId: model.id });
+  },
+});
+const thinkingLevelPicker = createComposerPicker({
+  root: expectElement<HTMLElement>("thinking-level-picker"),
+  trigger: expectElement<HTMLButtonElement>("thinking-level-picker-trigger"),
+  panel: expectElement<HTMLElement>("thinking-level-picker-panel"),
+  list: expectElement<HTMLElement>("thinking-level-picker-list"),
+  onChange(value) {
+    pendingThinkingLevel = value;
+    renderThinkingLevelPicker(pendingThinkingLevel || value);
+    postUiMessage({ type: "set_thinking_level", level: value });
+  },
+});
 const recentSessionsPanel = createRecentSessionsPanel({
   section: expectElement<HTMLElement>("recent-sessions-section"),
   preview: expectElement<HTMLElement>("recent-sessions-preview"),
@@ -101,15 +125,14 @@ let hasRequestedModels = false;
 let modelOptionsLoaded = false;
 let pendingModelValue = "";
 let pendingThinkingLevel = "";
-let suppressModelSelectChange = false;
 let isStreamingPhase = false;
 let shouldAutoScroll = true;
 let hasResolvedConversationState = false;
-let currentRecentSessions: RecentSessionSummary[] = [];
 let currentSessionPath: string | undefined;
 
 resetComposerHeight(promptInput);
 renderSendButton();
+renderThinkingLevelPicker("medium");
 
 const renderExtensionUiRequest = createExtensionUiRenderer({
   panel: extensionUiPanel,
@@ -160,19 +183,6 @@ newSessionButton.addEventListener("click", () => {
   startFreshConversation();
   postUiMessage({ type: "new_session" });
 });
-thinkingLevelSelect.addEventListener("change", () => {
-  const level = thinkingLevelSelect.value;
-  pendingThinkingLevel = level;
-  postUiMessage({ type: "set_thinking_level", level });
-});
-modelSelect.addEventListener("change", () => {
-  if (suppressModelSelectChange) return;
-  const model = availableModelsByValue.get(modelSelect.value);
-  if (!model) return;
-  pendingModelValue = formatModelValue(model);
-  appendInlineNote(`已请求切换模型到 ${formatModelValue(model)}`);
-  postUiMessage({ type: "set_model", provider: model.provider, modelId: model.id });
-});
 
 window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   const message = event.data;
@@ -183,12 +193,14 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
     resolveBootingNotice();
     if (pendingThinkingLevel) {
       pendingThinkingLevel = "";
-      if (lastRpcThinkingLevel) thinkingLevelSelect.value = lastRpcThinkingLevel;
+      if (lastRpcThinkingLevel) {
+        renderThinkingLevelPicker(lastRpcThinkingLevel);
+      }
     }
     if (pendingModelValue) {
       pendingModelValue = "";
       currentModelValue = lastRpcModelValue;
-      renderModelSelect();
+      renderModelPicker();
     }
     appendTransientMessage("error", message.message);
     return;
@@ -232,8 +244,7 @@ function updateState(data: Record<string, unknown>): void {
   syncThinkingLevel(rpc);
   currentSessionPath = readString(rpc?.sessionFile);
   if (Array.isArray(data.recentSessions)) {
-    currentRecentSessions = data.recentSessions as RecentSessionSummary[];
-    recentSessionsPanel.update(currentRecentSessions, currentSessionPath);
+    recentSessionsPanel.update(data.recentSessions as RecentSessionSummary[], currentSessionPath);
     syncRecentSessionsVisibility();
   }
   if (!modelOptionsLoaded) requestAvailableModels();
@@ -248,10 +259,12 @@ function syncThinkingLevel(rpc: Record<string, unknown> | undefined): void {
   const nextLevel = readString(rpc?.thinkingLevel);
   if (!nextLevel) return;
   lastRpcThinkingLevel = nextLevel;
-  renderThinkingLevelSelect(pendingThinkingLevel || nextLevel);
+  renderThinkingLevelPicker(pendingThinkingLevel || nextLevel);
   if (pendingThinkingLevel && nextLevel !== pendingThinkingLevel) return;
   pendingThinkingLevel = "";
-  if (hasThinkingLevelOption(nextLevel)) thinkingLevelSelect.value = nextLevel;
+  if (thinkingLevelPicker.hasOption(nextLevel)) {
+    thinkingLevelPicker.setValue(nextLevel);
+  }
 }
 
 function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
@@ -263,7 +276,7 @@ function syncModelSelection(rpc: Record<string, unknown> | undefined): void {
   lastRpcModelValue = currentModelValue;
   if (pendingModelValue && currentModelValue !== pendingModelValue) return;
   pendingModelValue = "";
-  renderModelSelect();
+  renderModelPicker();
 }
 
 function applyAgentEvent(data: unknown): void {
@@ -755,58 +768,62 @@ function applyAvailableModelsQueryResult(event: Record<string, unknown>): void {
     modelLabelByValue.set(value, buildModelSelectLabel(model));
   }
   modelOptionsLoaded = true;
-  renderModelSelect();
+  renderModelPicker();
 }
 
-function renderModelSelect(): void {
-  suppressModelSelectChange = true;
-  modelSelect.replaceChildren();
-
+function renderModelPicker(): void {
   if (!modelOptionsLoaded) {
-    appendModelOption(
-      currentModelValue ? formatLooseModelLabel(currentModelValue) : "加载中",
-      currentModelValue,
+    modelPicker.setOptions(
+      currentModelValue
+        ? [{ value: currentModelValue, label: formatLooseModelLabel(currentModelValue) }]
+        : [],
     );
-    modelSelect.disabled = true;
-    suppressModelSelectChange = false;
+    modelPicker.setValue(currentModelValue);
+    modelPicker.setFallbackLabel(
+      currentModelValue ? formatLooseModelLabel(currentModelValue) : "加载中",
+    );
+    modelPicker.setDisabled(true);
     return;
   }
 
   if (availableModelValues.length === 0) {
-    appendModelOption(
-      currentModelValue ? formatLooseModelLabel(currentModelValue) : "无可用模型",
-      currentModelValue,
+    modelPicker.setOptions(
+      currentModelValue
+        ? [{ value: currentModelValue, label: formatLooseModelLabel(currentModelValue) }]
+        : [],
     );
-    modelSelect.disabled = true;
-    suppressModelSelectChange = false;
+    modelPicker.setValue(currentModelValue);
+    modelPicker.setFallbackLabel(
+      currentModelValue ? formatLooseModelLabel(currentModelValue) : "无可用模型",
+    );
+    modelPicker.setDisabled(true);
     return;
   }
 
+  const pickerOptions: Array<{ value: string; label: string }> = [];
   if (!currentModelValue) {
-    appendModelOption("模型", "");
+    modelPicker.setValue("");
   } else if (!availableModelsByValue.has(currentModelValue)) {
-    appendModelOption(formatLooseModelLabel(currentModelValue), currentModelValue);
+    pickerOptions.push({
+      value: currentModelValue,
+      label: formatLooseModelLabel(currentModelValue),
+    });
   }
 
   for (const value of availableModelValues) {
-    appendModelOption(modelLabelByValue.get(value) ?? formatLooseModelLabel(value), value);
+    pickerOptions.push({
+      value,
+      label: modelLabelByValue.get(value) ?? formatLooseModelLabel(value),
+    });
   }
 
-  modelSelect.value =
-    currentModelValue && hasModelOption(currentModelValue) ? currentModelValue : "";
-  modelSelect.disabled = false;
-  suppressModelSelectChange = false;
-  renderThinkingLevelSelect(
-    pendingThinkingLevel || lastRpcThinkingLevel || thinkingLevelSelect.value,
+  modelPicker.setOptions(pickerOptions);
+  modelPicker.setValue(
+    currentModelValue && modelPicker.hasOption(currentModelValue) ? currentModelValue : "",
   );
-}
-
-function appendModelOption(label: string, value: string): void {
-  modelSelect.append(new Option(label, value));
-}
-
-function hasModelOption(value: string): boolean {
-  return Array.from(modelSelect.options).some((option) => option.value === value);
+  modelPicker.setFallbackLabel("模型");
+  modelPicker.setDisabled(false);
+  renderThinkingLevelPicker(pendingThinkingLevel || lastRpcThinkingLevel || "medium");
 }
 
 function extractAvailableModels(data: unknown): AvailableModel[] | undefined {
@@ -901,14 +918,18 @@ function requestAvailableModels(): void {
   postUiMessage({ type: "get_available_models" });
 }
 
-function renderThinkingLevelSelect(preferredLevel: string): void {
+function renderThinkingLevelPicker(preferredLevel: string): void {
   const supportedLevels = getSupportedThinkingLevels();
   const nextValue = clampThinkingLevel(supportedLevels, preferredLevel);
-  thinkingLevelSelect.replaceChildren(
-    ...supportedLevels.map((level) => new Option(formatThinkingLevelLabel(level), level)),
+  thinkingLevelPicker.setOptions(
+    supportedLevels.map((level) => ({
+      value: level,
+      label: formatThinkingLevelLabel(level),
+    })),
   );
-  thinkingLevelSelect.disabled = supportedLevels.length <= 1;
-  thinkingLevelSelect.value = nextValue;
+  thinkingLevelPicker.setValue(nextValue);
+  thinkingLevelPicker.setFallbackLabel(formatThinkingLevelLabel(nextValue));
+  thinkingLevelPicker.setDisabled(supportedLevels.length <= 1);
 }
 
 function getSupportedThinkingLevels(): ThinkingLevel[] {
@@ -924,7 +945,7 @@ function getSupportedThinkingLevels(): ThinkingLevel[] {
 }
 
 function resolveActiveModelForThinking(): AvailableModel | undefined {
-  const modelValue = pendingModelValue || currentModelValue || modelSelect.value;
+  const modelValue = pendingModelValue || currentModelValue;
   if (!modelValue) return undefined;
   return availableModelsByValue.get(modelValue);
 }
@@ -951,10 +972,6 @@ function clampThinkingLevel(
     if (supportedLevels.includes(candidate)) return candidate;
   }
   return fallbackLevel;
-}
-
-function hasThinkingLevelOption(level: string): boolean {
-  return Array.from(thinkingLevelSelect.options).some((option) => option.value === level);
 }
 
 function appendInlineNote(message: string): void {
@@ -995,8 +1012,8 @@ function applyThinkingLevelCommandResult(): void {
   const requested = pendingThinkingLevel;
   pendingThinkingLevel = "";
   const resolved = lastRpcThinkingLevel || requested;
-  if (thinkingLevelSelect.value !== resolved) {
-    thinkingLevelSelect.value = resolved;
+  if (thinkingLevelPicker.hasOption(resolved)) {
+    thinkingLevelPicker.setValue(resolved);
   }
   if (resolved !== requested) {
     appendInlineNote(
@@ -1010,7 +1027,7 @@ function applyModelCommandResult(): void {
   const requested = pendingModelValue;
   pendingModelValue = "";
   currentModelValue = lastRpcModelValue || currentModelValue;
-  renderModelSelect();
+  renderModelPicker();
   if (currentModelValue && currentModelValue !== requested) {
     appendInlineNote(`模型切换未生效，当前仍为 ${currentModelValue}`);
   }

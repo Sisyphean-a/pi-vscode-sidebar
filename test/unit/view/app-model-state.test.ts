@@ -45,9 +45,9 @@ describe("sidebar webview model state", () => {
 
     await waitForFlush();
 
-    const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
-    expect(modelSelect.value).toBe("openai/gpt-5.3-codex");
-    expect(modelSelect.selectedOptions[0]?.textContent).toBe("5.3 Codex");
+    const modelTrigger = document.getElementById("model-picker-trigger") as HTMLButtonElement;
+    expect(modelTrigger.dataset.value).toBe("openai/gpt-5.3-codex");
+    expect(modelTrigger.textContent).toContain("5.3 Codex");
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -62,8 +62,8 @@ describe("sidebar webview model state", () => {
 
     await waitForFlush();
 
-    expect(modelSelect.value).toBe("openai/gpt-5.3-codex");
-    expect(modelSelect.selectedOptions[0]?.textContent).toBe("5.3 Codex");
+    expect(modelTrigger.dataset.value).toBe("openai/gpt-5.3-codex");
+    expect(modelTrigger.textContent).toContain("5.3 Codex");
   });
 });
 

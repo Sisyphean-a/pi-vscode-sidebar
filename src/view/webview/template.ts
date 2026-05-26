@@ -39,17 +39,44 @@ export const SIDEBAR_TEMPLATE = `
       <textarea id="prompt-input" rows="1" placeholder="继续提问"></textarea>
       <div class="composer-toolbar">
         <div id="composer-meta" class="composer-meta">
-          <select id="model-select" class="composer-select" title="切换模型" disabled>
-            <option value="">加载中</option>
-          </select>
-          <select id="thinking-level-select" class="composer-select" title="切换思考等级">
-            <option value="off">关闭</option>
-            <option value="minimal">极低</option>
-            <option value="low">低</option>
-            <option value="medium" selected>中</option>
-            <option value="high">高</option>
-            <option value="xhigh">超高</option>
-          </select>
+          <div id="model-picker" class="composer-picker">
+            <button
+              id="model-picker-trigger"
+              type="button"
+              class="composer-picker-trigger"
+              title="切换模型"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              data-value=""
+              disabled
+            >
+              加载中
+            </button>
+            <div id="model-picker-panel" class="composer-picker-panel hidden">
+              <div id="model-picker-list" class="composer-picker-list" role="listbox" aria-label="模型列表"></div>
+            </div>
+          </div>
+          <div id="thinking-level-picker" class="composer-picker">
+            <button
+              id="thinking-level-picker-trigger"
+              type="button"
+              class="composer-picker-trigger"
+              title="切换思考等级"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              data-value="medium"
+            >
+              中
+            </button>
+            <div id="thinking-level-picker-panel" class="composer-picker-panel hidden">
+              <div
+                id="thinking-level-picker-list"
+                class="composer-picker-list"
+                role="listbox"
+                aria-label="思考等级列表"
+              ></div>
+            </div>
+          </div>
         </div>
         <div class="toolbar-right">
           <button

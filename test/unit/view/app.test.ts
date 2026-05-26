@@ -328,9 +328,16 @@ describe("sidebar webview app", () => {
       }),
     );
 
-    const thinkingSelect = document.getElementById("thinking-level-select") as HTMLSelectElement;
-    thinkingSelect.value = "xhigh";
-    thinkingSelect.dispatchEvent(new Event("change"));
+    const thinkingTrigger = document.getElementById(
+      "thinking-level-picker-trigger",
+    ) as HTMLButtonElement;
+    thinkingTrigger.click();
+    await waitForFlush();
+    (
+      document.querySelector(
+        '#thinking-level-picker-list [data-value="xhigh"]',
+      ) as HTMLButtonElement | null
+    )?.click();
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -345,7 +352,8 @@ describe("sidebar webview app", () => {
     );
 
     await waitForFlush();
-    expect(thinkingSelect.value).toBe("xhigh");
+    expect(thinkingTrigger.dataset.value).toBe("xhigh");
+    expect(thinkingTrigger.textContent).toContain("超高");
     expect(
       postedMessages.some(
         (message) =>
@@ -357,7 +365,7 @@ describe("sidebar webview app", () => {
     ).toBe(true);
   });
 
-  it("renders model and thinking controls as native selects", async () => {
+  it("renders model and thinking controls as custom picker triggers", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
     ).acquireVsCodeApi = () => ({
@@ -367,16 +375,13 @@ describe("sidebar webview app", () => {
     await import("../../../src/view/webview/app.ts");
 
     const composerMeta = document.getElementById("composer-meta");
-    const modelSelect = document.getElementById("model-select") as HTMLSelectElement | null;
-    const thinkingSelect = document.getElementById(
-      "thinking-level-select",
-    ) as HTMLSelectElement | null;
+    const modelTrigger = document.getElementById("model-picker-trigger");
+    const thinkingTrigger = document.getElementById("thinking-level-picker-trigger");
 
-    expect(composerMeta?.querySelectorAll("select").length).toBe(2);
-    expect(modelSelect?.classList.contains("composer-select")).toBe(true);
-    expect(thinkingSelect?.classList.contains("composer-select")).toBe(true);
-    expect(document.getElementById("model-select-button")).toBeNull();
-    expect(document.getElementById("thinking-level-button")).toBeNull();
+    expect(composerMeta?.querySelectorAll(".composer-picker").length).toBe(2);
+    expect(modelTrigger?.classList.contains("composer-picker-trigger")).toBe(true);
+    expect(thinkingTrigger?.classList.contains("composer-picker-trigger")).toBe(true);
+    expect(composerMeta?.querySelectorAll("select").length).toBe(0);
   });
 
   it("renders recent session preview, opens the full dialog, and switches sessions on click", async () => {
@@ -612,9 +617,16 @@ describe("sidebar webview app", () => {
       }),
     );
 
-    const thinkingSelect = document.getElementById("thinking-level-select") as HTMLSelectElement;
-    thinkingSelect.value = "xhigh";
-    thinkingSelect.dispatchEvent(new Event("change"));
+    const thinkingTrigger = document.getElementById(
+      "thinking-level-picker-trigger",
+    ) as HTMLButtonElement;
+    thinkingTrigger.click();
+    await waitForFlush();
+    (
+      document.querySelector(
+        '#thinking-level-picker-list [data-value="xhigh"]',
+      ) as HTMLButtonElement | null
+    )?.click();
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -642,7 +654,8 @@ describe("sidebar webview app", () => {
     );
 
     await waitForFlush();
-    expect(thinkingSelect.value).toBe("high");
+    expect(thinkingTrigger.dataset.value).toBe("high");
+    expect(thinkingTrigger.textContent).toContain("高");
     expect(document.querySelector("#message-feed")?.textContent).toContain("当前模型暂不支持超高");
   });
 
@@ -1860,8 +1873,10 @@ describe("sidebar webview app", () => {
 
     await waitForFlush();
 
-    const thinkingSelect = document.getElementById("thinking-level-select") as HTMLSelectElement;
-    expect(Array.from(thinkingSelect.options).map((option) => option.value)).toEqual([
+    const thinkingOptions = Array.from(
+      document.querySelectorAll("#thinking-level-picker-list .composer-picker-option"),
+    ) as HTMLButtonElement[];
+    expect(thinkingOptions.map((option) => option.dataset.value)).toEqual([
       "low",
       "medium",
       "high",
@@ -1913,10 +1928,15 @@ describe("sidebar webview app", () => {
 
     await waitForFlush();
 
-    const modelSelect = document.getElementById("model-select") as HTMLSelectElement;
-    expect(Array.from(modelSelect.options).map((option) => option.value)).toContain("openai/gpt-5");
-    modelSelect.value = "anthropic/claude-opus-4";
-    modelSelect.dispatchEvent(new Event("change"));
+    const modelTrigger = document.getElementById("model-picker-trigger") as HTMLButtonElement;
+    expect(modelTrigger.textContent).toContain("5");
+    modelTrigger.click();
+    await waitForFlush();
+    (
+      document.querySelector(
+        '#model-picker-list [data-value="anthropic/claude-opus-4"]',
+      ) as HTMLButtonElement | null
+    )?.click();
 
     const setModelMessage = postedMessages.find(
       (message) =>

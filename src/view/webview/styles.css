@@ -739,10 +739,10 @@ textarea {
 .composer-meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: nowrap;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -758,35 +758,89 @@ textarea {
   justify-self: end;
 }
 
-.composer-select {
-  height: auto;
+.composer-picker {
+  position: relative;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.composer-picker-trigger {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   border: none;
-  border-radius: 0;
   padding: 0;
   color: var(--vscode-descriptionForeground, var(--vscode-input-foreground));
   background: transparent;
-  appearance: none;
   cursor: pointer;
   font-size: 12px;
   line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#model-select {
-  width: auto;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 112px;
+.composer-picker-trigger:hover {
+  color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground) 72%,
+    var(--vscode-editor-foreground)
+  );
 }
 
-#thinking-level-select {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 0;
-}
-
-.composer-select:disabled {
+.composer-picker-trigger:disabled {
   cursor: default;
+}
+
+#model-picker {
+  max-width: 120px;
+}
+
+.composer-picker-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  min-width: max(100%, 148px);
+  max-width: min(240px, calc(100vw - 48px));
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid
+    color-mix(in srgb, var(--vscode-panel-border, var(--vscode-sideBar-border)) 72%, transparent);
+  border-radius: 12px;
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.composer-picker-list {
+  display: grid;
+  gap: 2px;
+}
+
+.composer-picker-option {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.composer-picker-option:hover {
+  background: color-mix(
+    in srgb,
+    var(--vscode-list-hoverBackground, var(--vscode-button-secondaryBackground)) 72%,
+    transparent
+  );
+}
+
+.composer-picker-option.is-selected {
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-button-foreground));
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-button-background));
 }
 
 .send-action {
