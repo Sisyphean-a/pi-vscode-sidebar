@@ -4,6 +4,7 @@ const PREVIEW_LIMIT = 3;
 
 export interface RecentSessionsPanel {
   update(sessions: RecentSessionSummary[], activeSessionPath?: string): void;
+  setVisible(visible: boolean): void;
 }
 
 interface CreateRecentSessionsPanelOptions {
@@ -22,6 +23,7 @@ export function createRecentSessionsPanel(
 ): RecentSessionsPanel {
   let sessions: RecentSessionSummary[] = [];
   let activeSessionPath: string | undefined;
+  let isVisible = true;
 
   const closeDialog = () => {
     options.overlay.classList.add("hidden");
@@ -48,7 +50,11 @@ export function createRecentSessionsPanel(
     update(nextSessions, nextActiveSessionPath) {
       sessions = [...nextSessions];
       activeSessionPath = nextActiveSessionPath;
-      renderRecentSessions(options, sessions, activeSessionPath, closeDialog);
+      renderRecentSessions(options, sessions, activeSessionPath, isVisible, closeDialog);
+    },
+    setVisible(visible) {
+      isVisible = visible;
+      renderRecentSessions(options, sessions, activeSessionPath, isVisible, closeDialog);
     },
   };
 }
@@ -57,10 +63,11 @@ function renderRecentSessions(
   options: CreateRecentSessionsPanelOptions,
   sessions: RecentSessionSummary[],
   activeSessionPath: string | undefined,
+  isVisible: boolean,
   closeDialog: () => void,
 ): void {
   const hasSessions = sessions.length > 0;
-  options.section.classList.toggle("hidden", !hasSessions);
+  options.section.classList.toggle("hidden", !hasSessions || !isVisible);
 
   if (!hasSessions) {
     options.preview.replaceChildren();
@@ -68,6 +75,10 @@ function renderRecentSessions(
     options.moreButton.classList.add("hidden");
     closeDialog();
     return;
+  }
+
+  if (!isVisible) {
+    closeDialog();
   }
 
   options.preview.replaceChildren(

@@ -6,7 +6,13 @@ import { createRecentSessionsPanel } from "./recent-sessions.ts";
 import type { RecentSessionSummary } from "../../shared/recent-sessions.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 import { SIDEBAR_TEMPLATE } from "./template.ts";
-import { asRecord, readString, stringifyJson, truncateText } from "./ui-text.ts";
+import {
+  asRecord,
+  readString,
+  stringifyJson,
+  stripLeadingThinkingBlocks,
+  truncateText,
+} from "./ui-text.ts";
 
 declare function acquireVsCodeApi<T>(): {
   postMessage(message: T): void;
@@ -47,13 +53,10 @@ if (!root) {
 
 root.innerHTML = SIDEBAR_TEMPLATE;
 
-const title = expectElement<HTMLElement>("title");
 const modelSelect = expectElement<HTMLSelectElement>("model-select");
 const promptInput = expectElement<HTMLTextAreaElement>("prompt-input");
 const sendButton = expectElement<HTMLButtonElement>("send-button");
 const newSessionButton = expectElement<HTMLButtonElement>("new-session-button");
-const abortButton = expectElement<HTMLButtonElement>("abort-button");
-const reconnectButton = expectElement<HTMLButtonElement>("reconnect-button");
 const scrollToBottomButton = expectElement<HTMLButtonElement>("scroll-to-bottom-button");
 const thinkingLevelSelect = expectElement<HTMLSelectElement>("thinking-level-select");
 const extensionUiPanel = expectElement<HTMLElement>("extension-ui-panel");
@@ -67,6 +70,7 @@ const recentSessionsPanel = createRecentSessionsPanel({
   dialogList: expectElement<HTMLElement>("recent-sessions-dialog-list"),
   closeButton: expectElement<HTMLButtonElement>("recent-sessions-dialog-close"),
   onSelect(sessionPath) {
+    beginConversationReplay();
     postUiMessage({ type: "switch_session", sessionPath });
   },
 });
@@ -75,6 +79,7 @@ const messageTextByKey = new Map<string, string>();
 const activityTranscript = createActivityTranscript({
   container: messageFeed,
   onChange() {
+    syncRecentSessionsVisibility();
     scrollToConversationBottom();
   },
 });
@@ -99,8 +104,12 @@ let pendingThinkingLevel = "";
 let suppressModelSelectChange = false;
 let isStreamingPhase = false;
 let shouldAutoScroll = true;
+let hasResolvedConversationState = false;
+let currentRecentSessions: RecentSessionSummary[] = [];
+let currentSessionPath: string | undefined;
 
 resetComposerHeight(promptInput);
+renderSendButton();
 
 const renderExtensionUiRequest = createExtensionUiRenderer({
   panel: extensionUiPanel,
@@ -111,14 +120,8 @@ const renderExtensionUiRequest = createExtensionUiRenderer({
   postResponse(requestId, payload) {
     postUiMessage({ type: "respond_extension_ui", requestId, payload });
   },
-  updateStatus(statusKey, statusText) {
-    updateConnectionTitle(statusKey, statusText);
-  },
-  updateTitle(nextTitle) {
-    if (nextTitle.trim()) {
-      title.textContent = nextTitle;
-    }
-  },
+  updateStatus() {},
+  updateTitle() {},
   setEditorText(text) {
     promptInput.value = text;
     promptInput.focus();
@@ -154,12 +157,7 @@ promptInput.addEventListener("keydown", (event) => {
   sendPrompt();
 });
 newSessionButton.addEventListener("click", () => {
-  postUiMessage({ type: "new_session" });
-});
-abortButton.addEventListener("click", () => {
-  postUiMessage({ type: "abort" });
-});
-reconnectButton.addEventListener("click", () => {
+  startFreshConversation();
   postUiMessage({ type: "new_session" });
 });
 thinkingLevelSelect.addEventListener("change", () => {
@@ -180,12 +178,9 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
   const message = event.data;
   if (!message || typeof message !== "object" || !("type" in message)) return;
 
-  if (message.type === "notice") {
-    updateConnectionTitle("connected", message.message);
-    return;
-  }
+  if (message.type === "notice") return;
   if (message.type === "error") {
-    resolveBootingNotice("process_dead");
+    resolveBootingNotice();
     if (pendingThinkingLevel) {
       pendingThinkingLevel = "";
       if (lastRpcThinkingLevel) thinkingLevelSelect.value = lastRpcThinkingLevel;
@@ -199,7 +194,7 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
     return;
   }
   if (message.type === "event") {
-    resolveBootingNotice("idle");
+    resolveBootingNotice();
     applyAgentEvent(message.data);
     return;
   }
@@ -212,8 +207,9 @@ window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
     return;
   }
   if (message.type === "extension_ui_request") {
-    resolveBootingNotice("idle");
+    resolveBootingNotice();
     renderExtensionUiRequest(message.data as Record<string, unknown>);
+    syncRecentSessionsVisibility();
   }
 });
 
@@ -230,24 +226,21 @@ function updateState(data: Record<string, unknown>): void {
   const view = asRecord(data.view);
   const rpc = asRecord(data.rpc);
   const phase = readString(view?.phase) ?? "idle";
-  resolveBootingNotice(phase);
-  updateConnectionTitle(phase);
+  resolveBootingNotice();
   syncStreamingPhase(phase);
-  reconnectButton.classList.toggle("hidden", phase !== "process_dead");
   syncModelSelection(rpc);
   syncThinkingLevel(rpc);
+  currentSessionPath = readString(rpc?.sessionFile);
   if (Array.isArray(data.recentSessions)) {
-    recentSessionsPanel.update(
-      data.recentSessions as RecentSessionSummary[],
-      readString(rpc?.sessionFile),
-    );
+    currentRecentSessions = data.recentSessions as RecentSessionSummary[];
+    recentSessionsPanel.update(currentRecentSessions, currentSessionPath);
+    syncRecentSessionsVisibility();
   }
   if (!modelOptionsLoaded) requestAvailableModels();
 }
 
-function resolveBootingNotice(phase: string): void {
+function resolveBootingNotice(): void {
   if (bootingNoticeResolved) return;
-  updateConnectionTitle(phase);
   bootingNoticeResolved = true;
 }
 
@@ -447,12 +440,15 @@ function setMessageText(
   fallbackKeys: string[] = [],
 ): void {
   promoteMessageKey(key, fallbackKeys);
-  const state = ensureMessage(key, role);
   const currentText = messageTextByKey.get(key) ?? "";
-  const resolvedText = mode === "merge" ? mergeMessageText(currentText, nextText) : nextText;
+  const mergedText = mode === "merge" ? mergeMessageText(currentText, nextText) : nextText;
+  const resolvedText = role === "assistant" ? stripLeadingThinkingBlocks(mergedText) : mergedText;
+  if (!resolvedText && !messagesByKey.has(key) && !currentText) return;
   if (resolvedText === currentText) return;
+  const state = ensureMessage(key, role);
   messageTextByKey.set(key, resolvedText);
   renderMessageText(state, resolvedText);
+  syncRecentSessionsVisibility();
   scrollToConversationBottom();
 }
 
@@ -555,16 +551,24 @@ function applyQueryResultEvent(event: Record<string, unknown>): void {
   const replace = event.replace === true;
   const messages = extractMessageArray(event.data);
   if (!messages || messages.length === 0) {
-    if (replace) resetMessageFeed();
+    if (replace) {
+      hasResolvedConversationState = true;
+      resetMessageFeed();
+      syncRecentSessionsVisibility();
+    }
     return;
   }
 
-  if (replace) resetMessageFeed();
+  if (replace) {
+    hasResolvedConversationState = true;
+    resetMessageFeed();
+  }
   for (let index = 0; index < messages.length; index += 1) {
     const item = asRecord(messages[index]);
     if (!item) continue;
     hydrateHistoryMessage(item, index);
   }
+  syncRecentSessionsVisibility();
 }
 
 function extractMessageArray(payload: unknown): unknown[] | undefined {
@@ -637,6 +641,7 @@ function resetMessageFeed(): void {
   toolArgsByToolCallId.clear();
   messageFeed.replaceChildren();
   activityTranscript.reset();
+  extensionUiPanel.classList.add("hidden");
   shouldAutoScroll = true;
   updateScrollToBottomButton();
 }
@@ -1254,17 +1259,43 @@ function scrollToConversationBottom(force = false): void {
 
 function syncStreamingPhase(phase: string): void {
   isStreamingPhase = phase === "streaming";
-  sendButton.textContent = isStreamingPhase ? "停止" : "发送";
-  sendButton.title = isStreamingPhase ? "停止生成" : "发送消息";
+  newSessionButton.disabled = isStreamingPhase;
+  renderSendButton();
 }
 
-function updateConnectionTitle(statusKey: string, statusText?: string): void {
-  if (statusText?.trim()) {
-    title.textContent = statusText;
-    return;
+function renderSendButton(): void {
+  sendButton.dataset.mode = isStreamingPhase ? "stop" : "send";
+  sendButton.title = isStreamingPhase ? "停止生成" : "发送消息";
+  sendButton.setAttribute("aria-label", sendButton.title);
+  sendButton.innerHTML = isStreamingPhase
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
+}
+
+function startFreshConversation(): void {
+  hasResolvedConversationState = true;
+  resetMessageFeed();
+  promptInput.value = "";
+  resetComposerHeight(promptInput);
+  syncRecentSessionsVisibility();
+}
+
+function beginConversationReplay(): void {
+  hasResolvedConversationState = false;
+  resetMessageFeed();
+  promptInput.value = "";
+  resetComposerHeight(promptInput);
+  syncRecentSessionsVisibility();
+}
+
+function syncRecentSessionsVisibility(): void {
+  const hasConversationContent =
+    messageFeed.childElementCount > 0 || !extensionUiPanel.classList.contains("hidden");
+  if (hasConversationContent) {
+    hasResolvedConversationState = true;
   }
 
-  title.textContent = statusKey === "process_dead" ? "未连接Pi" : "已连接";
+  recentSessionsPanel.setVisible(hasResolvedConversationState && !hasConversationContent);
 }
 
 function insertPromptReference(payload: unknown): void {

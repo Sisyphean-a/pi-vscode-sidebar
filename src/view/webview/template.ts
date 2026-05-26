@@ -2,13 +2,13 @@ export const SIDEBAR_TEMPLATE = `
   <main class="app-shell">
     <header class="topbar">
       <div class="topbar-row">
-        <div class="topbar-main">
-          <h1 id="title">未连接Pi</h1>
-        </div>
         <div class="topbar-actions">
-          <button id="new-session-button" type="button" class="text-action" title="新建会话">新对话</button>
-          <button id="abort-button" type="button" class="text-action" title="停止生成">停止</button>
-          <button id="reconnect-button" type="button" class="text-action hidden" title="重新连接">重连</button>
+          <button id="new-session-button" type="button" class="icon-action topbar-icon-button" title="新建会话" aria-label="新建会话">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
         </div>
       </div>
       <section
@@ -52,7 +52,14 @@ export const SIDEBAR_TEMPLATE = `
           </select>
         </div>
         <div class="toolbar-right">
-          <button id="send-button" type="button" class="send-action" title="发送消息">发送</button>
+          <button
+            id="send-button"
+            type="button"
+            class="send-action"
+            title="发送消息"
+            aria-label="发送消息"
+            data-mode="send"
+          ></button>
         </div>
       </div>
     </footer>

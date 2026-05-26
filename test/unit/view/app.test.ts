@@ -7,7 +7,7 @@ describe("sidebar webview app", () => {
     document.body.innerHTML = `<div id="app"></div>`;
   });
 
-  it("replaces booting notice after first state update", async () => {
+  it("renders a single icon-only new session action in the topbar", async () => {
     const postedMessages: unknown[] = [];
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
@@ -19,26 +19,13 @@ describe("sidebar webview app", () => {
 
     await import("../../../src/view/webview/app.ts");
 
-    const title = document.getElementById("title");
-    const statusBadge = document.getElementById("status-badge");
-    const systemMessage = document.getElementById("system-message");
-    expect(title?.textContent).toBe("未连接Pi");
+    const newSessionButton = document.getElementById("new-session-button") as HTMLButtonElement;
+    expect(document.getElementById("title")).toBeNull();
+    expect(document.getElementById("abort-button")).toBeNull();
+    expect(document.getElementById("reconnect-button")).toBeNull();
+    expect(newSessionButton.title).toBe("新建会话");
+    expect(newSessionButton.querySelector("svg")).not.toBeNull();
 
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: {
-          type: "state",
-          data: {
-            view: { phase: "idle" },
-            rpc: {},
-          },
-        },
-      }),
-    );
-
-    expect(title?.textContent).toBe("已连接");
-    expect(statusBadge).toBeNull();
-    expect(systemMessage).toBeNull();
     expect(
       postedMessages.some(
         (message) =>
@@ -49,29 +36,29 @@ describe("sidebar webview app", () => {
     ).toBe(true);
   });
 
-  it("replaces booting notice after first event update", async () => {
+  it("starts a fresh session when the topbar plus action is clicked", async () => {
+    const postedMessages: unknown[] = [];
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
     ).acquireVsCodeApi = () => ({
-      postMessage() {},
+      postMessage(message: unknown) {
+        postedMessages.push(message);
+      },
     });
 
     await import("../../../src/view/webview/app.ts");
 
-    const title = document.getElementById("title");
+    (document.getElementById("new-session-button") as HTMLButtonElement).click();
+    await waitForFlush();
 
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: {
-          type: "event",
-          data: {
-            type: "agent_start",
-          },
-        },
-      }),
-    );
-
-    expect(title?.textContent).toBe("已连接");
+    expect(
+      postedMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          !!message &&
+          (message as { type?: string }).type === "new_session",
+      ),
+    ).toBe(true);
   });
 
   it("updates one assistant bubble during text streaming", async () => {
@@ -135,6 +122,84 @@ describe("sidebar webview app", () => {
     const bubbles = document.querySelectorAll("#message-feed .chat-message.role-assistant");
     expect(bubbles.length).toBe(1);
     expect(bubbles[0]?.textContent).toContain("Hi! What can I help you with?");
+  });
+
+  it("keeps leading thinking-tag text out of assistant bubbles during streaming", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              partial: {
+                role: "assistant",
+                responseId: "resp-hidden-thinking-1",
+                content: [{ type: "text", text: "<thinking>Need inspect EMAIL_SUFFIX_OPTIONS" }],
+              },
+            },
+            message: {
+              role: "assistant",
+              responseId: "resp-hidden-thinking-1",
+              content: [{ type: "text", text: "<thinking>Need inspect EMAIL_SUFFIX_OPTIONS" }],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    expect(document.querySelectorAll("#message-feed .chat-message.role-assistant")).toHaveLength(0);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "message_update",
+            assistantMessageEvent: {
+              type: "text_delta",
+              partial: {
+                role: "assistant",
+                responseId: "resp-hidden-thinking-1",
+                content: [
+                  {
+                    type: "text",
+                    text: "<thinking>Need inspect EMAIL_SUFFIX_OPTIONS</thinking>后缀枚举来自 EMAIL_SUFFIX_OPTIONS。",
+                  },
+                ],
+              },
+            },
+            message: {
+              role: "assistant",
+              responseId: "resp-hidden-thinking-1",
+              content: [
+                {
+                  type: "text",
+                  text: "<thinking>Need inspect EMAIL_SUFFIX_OPTIONS</thinking>后缀枚举来自 EMAIL_SUFFIX_OPTIONS。",
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    const bubbles = document.querySelectorAll("#message-feed .chat-message.role-assistant");
+    expect(bubbles.length).toBe(1);
+    expect(bubbles[0]?.textContent).toContain("后缀枚举来自 EMAIL_SUFFIX_OPTIONS。");
+    expect(bubbles[0]?.textContent).not.toContain("Need inspect EMAIL_SUFFIX_OPTIONS");
+    expect(bubbles[0]?.textContent).not.toContain("<thinking>");
   });
 
   it("does not create duplicate assistant bubbles when response id appears late", async () => {
@@ -364,6 +429,20 @@ describe("sidebar webview app", () => {
       }),
     );
 
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_messages",
+            replace: true,
+            data: [],
+          },
+        },
+      }),
+    );
+
     await waitForFlush();
 
     const previewItems = document.querySelectorAll("#recent-sessions-preview .recent-session-item");
@@ -429,6 +508,20 @@ describe("sidebar webview app", () => {
       }),
     );
 
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_messages",
+            replace: true,
+            data: [],
+          },
+        },
+      }),
+    );
+
     await waitForFlush();
 
     const section = document.getElementById("recent-sessions-section");
@@ -437,6 +530,65 @@ describe("sidebar webview app", () => {
     expect(section?.classList.contains("recent-sessions-stream")).toBe(true);
     expect(document.querySelector(".recent-sessions-label")).toBeNull();
     expect(moreButton?.classList.contains("recent-sessions-link")).toBe(true);
+  });
+
+  it("shows recent sessions only before the current conversation starts", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          data: {
+            view: { phase: "idle" },
+            rpc: {},
+            recentSessions: [
+              {
+                sessionId: "session-1",
+                sessionPath: "C:\\sessions\\session-1.jsonl",
+                title: "@src/pi/runtime.ts:22-28 这个函数在哪使用的？",
+                updatedAt: "2026-05-26T12:41:00.000Z",
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    const section = document.getElementById("recent-sessions-section") as HTMLElement;
+    expect(section.classList.contains("hidden")).toBe(true);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_messages",
+            replace: true,
+            data: [],
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+    expect(section.classList.contains("hidden")).toBe(false);
+
+    const prompt = document.getElementById("prompt-input") as HTMLTextAreaElement;
+    const send = document.getElementById("send-button") as HTMLButtonElement;
+    prompt.value = "帮我看看这个函数";
+    send.click();
+
+    await waitForFlush();
+    expect(section.classList.contains("hidden")).toBe(true);
   });
 
   it("shows a clamp notice when backend keeps a different thinking level", async () => {
@@ -629,7 +781,9 @@ describe("sidebar webview app", () => {
     );
 
     const send = document.getElementById("send-button") as HTMLButtonElement;
-    expect(send.textContent).toContain("停止");
+    expect(send.dataset.mode).toBe("stop");
+    expect(send.title).toBe("停止生成");
+    expect(send.querySelector("rect")).not.toBeNull();
 
     send.click();
     await waitForFlush();

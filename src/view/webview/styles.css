@@ -32,49 +32,33 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 10px 14px 8px;
+  padding: 0 14px 8px;
 }
 
 .topbar {
   position: relative;
   display: grid;
   gap: 6px;
-  padding: 4px 4px 18px;
   border-bottom: 1px solid
     color-mix(in srgb, var(--vscode-sideBar-border, var(--vscode-panel-border)) 62%, transparent);
 }
 
 .topbar-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.topbar-main {
-  min-width: 0;
-  display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.topbar h1 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--vscode-sideBarTitle-foreground, var(--vscode-sideBar-foreground));
-  letter-spacing: 0.01em;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .topbar-actions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
 }
 
 .icon-action {
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 10px;
   min-height: 28px;
   padding: 0 10px;
   color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
@@ -88,6 +72,13 @@ textarea {
     var(--vscode-button-secondaryBackground, var(--vscode-button-background)) 68%,
     transparent
   );
+}
+
+.topbar-icon-button {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  justify-content: center;
 }
 
 .recent-sessions {
@@ -223,29 +214,26 @@ textarea {
   overflow: auto;
 }
 
-.text-action,
 .send-action {
   border: 1px solid transparent;
-  border-radius: 12px;
-  min-height: 38px;
-  padding: 0 16px;
-  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-  background: color-mix(
-    in srgb,
-    var(--vscode-button-secondaryBackground, var(--vscode-button-background)) 88%,
-    transparent
-  );
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  border-radius: 10px;
   cursor: pointer;
-  font-weight: 500;
+  transition:
+    transform 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    opacity 150ms ease;
 }
 
-.text-action:hover,
 .send-action:hover {
-  background: color-mix(
-    in srgb,
-    var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)) 90%,
-    transparent
-  );
+  transform: translateY(-1px);
 }
 
 .send-action {
@@ -255,6 +243,15 @@ textarea {
 
 .send-action:hover {
   background: var(--vscode-button-hoverBackground);
+}
+
+.send-action[data-mode="stop"] {
+  color: var(--vscode-button-secondaryForeground, var(--vscode-errorForeground));
+  background: color-mix(in srgb, var(--vscode-errorForeground) 14%, transparent);
+}
+
+.send-action[data-mode="stop"]:hover {
+  background: color-mix(in srgb, var(--vscode-errorForeground) 22%, transparent);
 }
 
 .conversation {
@@ -268,7 +265,8 @@ textarea {
 
 .message-feed {
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -295,6 +293,7 @@ textarea {
   display: flex;
   flex-direction: column;
   max-width: 92%;
+  min-width: 0;
 }
 
 .chat-message.role-user {
@@ -314,8 +313,10 @@ textarea {
   border-radius: 0;
   color: var(--vscode-editor-foreground, var(--vscode-sideBar-foreground));
   background: transparent;
+  min-width: 0;
   white-space: normal;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chat-content :where(h1, h2, h3, h4, h5, h6, p, ul, ol, pre, hr) {
@@ -325,6 +326,11 @@ textarea {
 .chat-content {
   display: grid;
   gap: 6px;
+}
+
+.chat-content > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chat-content :where(h1, h2, h3, h4, h5, h6) {
@@ -360,6 +366,9 @@ textarea {
   padding: 1px 5px;
   color: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
   background: var(--vscode-textCodeBlock-background);
+  white-space: break-spaces;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .chat-content code {
@@ -368,6 +377,8 @@ textarea {
 
 .code-block {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--vscode-panel-border, var(--vscode-sideBar-border));
   border-radius: 8px;
@@ -388,14 +399,19 @@ textarea {
 
 .code-block pre {
   margin: 0;
-  overflow: auto;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
   white-space: pre;
 }
 
 .code-block pre code {
   display: block;
+  padding: 0 42px 0 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
   line-height: 1.5;
-  padding-right: 42px;
 }
 
 .code-copy-button {
@@ -775,9 +791,6 @@ textarea {
 
 .send-action {
   min-height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-weight: 600;
 }
 
 .line {

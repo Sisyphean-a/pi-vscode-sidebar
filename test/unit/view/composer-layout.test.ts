@@ -40,4 +40,28 @@ describe("composer layout source", () => {
     expect(styles).toMatch(/\.composer textarea\s*\{[\s\S]*overflow-wrap:\s*anywhere;/);
     expect(styles).toMatch(/\.composer textarea:focus-visible\s*\{[\s\S]*outline:\s*none;/);
   });
+
+  it("keeps the conversation from horizontally scrolling while code blocks scroll internally", () => {
+    const styles = readFileSync(
+      new URL("../../../src/view/webview/styles.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.message-feed\s*\{[\s\S]*overflow-x:\s*hidden;/);
+    expect(styles).toMatch(/\.chat-message\s*\{[\s\S]*min-width:\s*0;/);
+    expect(styles).toMatch(/\.chat-content\s*\{[\s\S]*overflow-wrap:\s*anywhere;/);
+    expect(styles).toMatch(/\.chat-content > \*\s*\{[\s\S]*max-width:\s*100%;/);
+    expect(styles).toMatch(/\.code-block\s*\{[\s\S]*max-width:\s*100%;/);
+    expect(styles).toMatch(/\.code-block pre\s*\{[\s\S]*overflow-x:\s*auto;/);
+  });
+
+  it("keeps block code visually flat so only the outer code block provides the background", () => {
+    const styles = readFileSync(
+      new URL("../../../src/view/webview/styles.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toMatch(/\.code-block pre code\s*\{[\s\S]*background:\s*transparent;/);
+    expect(styles).toMatch(/\.code-block pre code\s*\{[\s\S]*border-radius:\s*0;/);
+  });
 });
