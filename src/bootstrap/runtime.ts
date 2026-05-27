@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { createBridge } from "../bridge/extension-bridge.ts";
+import type { LogBroadcaster } from "../host/log-broadcaster.ts";
 import { createLogger, normalizeLogLevel, type Logger } from "../host/logger.ts";
 import { attachRpcTraceLogging } from "../host/rpc-trace-logger.ts";
 import { createPiRpcProcessManager } from "../host/process-manager.ts";
@@ -28,6 +29,7 @@ interface EnsureStartedOptions {
 export function setupTraceLogging(
   context: vscode.ExtensionContext,
   processManager: ReturnType<typeof createPiRpcProcessManager>,
+  broadcaster?: Pick<LogBroadcaster, "publish">,
 ): Logger {
   const output = vscode.window.createOutputChannel("Pi Sidebar");
   context.subscriptions.push(output);
@@ -38,6 +40,7 @@ export function setupTraceLogging(
     level: logLevel,
     write(line) {
       output.appendLine(line);
+      broadcaster?.publish(line);
     },
   });
   logger.info({ scope: "extension", message: `logger initialized at level=${logLevel}` });

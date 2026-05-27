@@ -65,6 +65,13 @@
           "title": "助手",
           "icon": "assets/logo.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "piSidebarPanel",
+          "title": "Pi Sidebar",
+          "icon": "assets/logo.svg"
+        }
       ]
     },
     "views": {
@@ -73,6 +80,13 @@
           "type": "webview",
           "id": "piSidebar.main",
           "name": "对话"
+        }
+      ],
+      "piSidebarPanel": [
+        {
+          "type": "webview",
+          "id": "piSidebar.logs",
+          "name": "日志"
         }
       ]
     },
@@ -109,12 +123,18 @@
             "debug"
           ],
           "description": "扩展日志级别。"
+        },
+        "piSidebar.panelLogs.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用底栏日志标签页。"
         }
       }
     }
   },
   "activationEvents": [
     "onView:piSidebar.main",
+    "onView:piSidebar.logs",
     "onCommand:piSidebar.focus"
   ],
   "engines": {

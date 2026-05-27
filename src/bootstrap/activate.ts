@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { registerSidebarCommands } from "./commands.ts";
+import { registerPanelLogView } from "./panel-log-view.ts";
 import {
   createEnsureStarted,
   createOptionalBridge,
@@ -7,17 +8,20 @@ import {
   readRpcTimeoutMs,
   setupTraceLogging,
 } from "./runtime.ts";
+import { createLogBroadcaster } from "../host/log-broadcaster.ts";
 import { createSidebarController } from "../host/controller.ts";
 import { createPiRpcProcessManager } from "../host/process-manager.ts";
 import { createRpcClient } from "../host/rpc-client.ts";
 import { createRpcSessionStateStore } from "../host/state-store.ts";
 import { createRecentSessionsProvider } from "../session/recent-sessions.ts";
+import { createPanelLogViewProvider } from "../view/panel-log-provider.ts";
 import { createSessionTracker } from "../session/tracker.ts";
 import { createSidebarViewProvider } from "../view/provider.ts";
 
 export async function activate(context: vscode.ExtensionContext) {
   const processManager = createPiRpcProcessManager();
-  const logger = setupTraceLogging(context, processManager);
+  const logBroadcaster = createLogBroadcaster();
+  const logger = setupTraceLogging(context, processManager, logBroadcaster);
   const tracker = createSessionTracker(context);
   const recentSessions = createRecentSessionsProvider({
     workspaceDir: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
@@ -53,12 +57,17 @@ export async function activate(context: vscode.ExtensionContext) {
     storageUri: context.globalStorageUri,
     controller,
   });
+  const panelLogProvider = createPanelLogViewProvider({
+    extensionUri: context.extensionUri,
+    broadcaster: logBroadcaster,
+  });
 
   registerSidebarCommands(context, {
     bridge,
     controller,
     provider,
   });
+  registerPanelLogView(context, panelLogProvider);
 }
 
 export async function deactivate() {}

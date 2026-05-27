@@ -21,4 +21,14 @@ export default defineConfig([
       sourcemap: true,
     },
   },
+  {
+    input: "src/view/webview/panel-log-app.ts",
+    platform: "browser",
+    output: {
+      file: "dist/webview/panel-log-app.js",
+      format: "iife",
+      name: "PiSidebarPanelLogWebview",
+      sourcemap: true,
+    },
+  },
 ]);

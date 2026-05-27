@@ -12,15 +12,44 @@ vi.mock("vscode", () => ({
     },
   },
   window: {
-    createOutputChannel() {
-      return { appendLine() {}, dispose() {} };
-    },
+    createOutputChannel: vi.fn(() => ({ appendLine() {}, dispose() {} })),
   },
 }));
 
 describe("bootstrap runtime", () => {
   beforeEach(() => {
     vi.resetModules();
+  });
+
+  it("writes logs to the output channel and publishes the same line to the broadcaster", async () => {
+    const output = { appendLine: vi.fn(), dispose: vi.fn() };
+    const publish = vi.fn();
+    const vscode = await import("vscode");
+    (vscode.window.createOutputChannel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(output);
+
+    const { setupTraceLogging } = await import("../../../src/bootstrap/runtime.ts");
+
+    const logger = setupTraceLogging(
+      { subscriptions: [] } as never,
+      { onEvent: vi.fn(() => () => {}) } as never,
+      { publish },
+    );
+    logger.info({
+      scope: "test",
+      message: "hello",
+      details: { ok: true },
+    });
+
+    expect(output.appendLine).toHaveBeenCalledTimes(2);
+    const line = output.appendLine.mock.calls[1]?.[0];
+    expect(typeof line).toBe("string");
+    expect(JSON.parse(line)).toMatchObject({
+      level: "info",
+      scope: "test",
+      message: "hello",
+      details: { ok: true },
+    });
+    expect(publish).toHaveBeenCalledWith(line);
   });
 
   it("starts the rpc process and restores the pending session only once", async () => {
