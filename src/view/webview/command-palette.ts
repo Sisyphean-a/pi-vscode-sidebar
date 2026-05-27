@@ -4,6 +4,7 @@ import {
   type SidebarCommandLocale,
   type SidebarCommandDefinition,
 } from "../../shared/sidebar-commands.ts";
+import { renderCommandPaletteItems } from "./command-palette-dom.ts";
 
 interface CommandPaletteOptions {
   applyCommand(name: string): void;
@@ -52,7 +53,7 @@ export function createCommandPalette(options: CommandPaletteOptions): CommandPal
     moveSelection(offset) {
       if (visibleItems.length === 0) return false;
       selectedIndex = (selectedIndex + offset + visibleItems.length) % visibleItems.length;
-      renderCommandPalette(options.list, visibleItems, selectedIndex, options.applyCommand);
+      renderCommandPaletteItems(options.list, visibleItems, selectedIndex, options.applyCommand);
       return true;
     },
     setDynamicCommands(commands) {
@@ -66,7 +67,7 @@ export function createCommandPalette(options: CommandPaletteOptions): CommandPal
       }
       visibleItems = filterSidebarCommands(query, options.locale, dynamicCommands);
       selectedIndex = 0;
-      renderCommandPalette(options.list, visibleItems, selectedIndex, options.applyCommand);
+      renderCommandPaletteItems(options.list, visibleItems, selectedIndex, options.applyCommand);
       options.panel.classList.toggle("hidden", visibleItems.length === 0);
     },
   };
@@ -79,48 +80,4 @@ function readCommandQuery(value: string): string | undefined {
   const spaceIndex = body.indexOf(" ");
   if (spaceIndex !== -1) return undefined;
   return body.trim();
-}
-
-function renderCommandPalette(
-  list: HTMLElement,
-  items: SidebarCommandDefinition[],
-  selectedIndex: number,
-  applyCommand: (name: string) => void,
-): void {
-  list.replaceChildren(
-    ...items.map((item, index) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "command-palette-item";
-      if (index === selectedIndex) row.classList.add("is-selected");
-      const primary = document.createElement("div");
-      primary.className = "command-palette-item-primary";
-
-      const name = document.createElement("span");
-      name.className = "command-palette-item-name";
-      name.textContent = item.name;
-      primary.append(name);
-
-      if (item.sourceBadge) {
-        const badge = document.createElement("span");
-        badge.className = "command-palette-item-badge";
-        badge.textContent = item.sourceBadge;
-        primary.append(badge);
-      }
-
-      row.append(primary);
-
-      if (item.description) {
-        const description = document.createElement("span");
-        description.className = "command-palette-item-description";
-        description.textContent = item.description;
-        row.append(description);
-      }
-
-      row.addEventListener("click", () => {
-        applyCommand(item.name);
-      });
-      return row;
-    }),
-  );
 }

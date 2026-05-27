@@ -107,9 +107,9 @@ describe("sidebar webview model state", () => {
 
     await waitForFlush();
 
-    const imageButton = document.getElementById("image-attachment-button") as
-      | HTMLButtonElement
-      | null;
+    const imageButton = document.getElementById(
+      "image-attachment-button",
+    ) as HTMLButtonElement | null;
     expect(imageButton?.disabled).toBe(false);
 
     window.dispatchEvent(

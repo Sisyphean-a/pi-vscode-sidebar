@@ -1,25 +1,15 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  isAgentEventLike,
-  isRpcExtensionUiRequest,
-  isRpcResponse,
-  type RpcCommand,
-  type RpcOutputMessage,
-  type RpcResponse,
-} from "../shared/rpc-types.ts";
+import type { RpcCommand, RpcOutputMessage, RpcResponse } from "../shared/rpc-types.ts";
 import { createMessageBus, type Unsubscribe } from "./message-bus.ts";
+import { dispatchProcessPayload } from "./process-manager-dispatch.ts";
+import { createJsonlFramer } from "./process-manager-jsonl.ts";
+import { createPendingRequestStore } from "./process-manager-pending.ts";
 
-export interface JsonlFramer {
-  push(chunk: Buffer | string): unknown[];
-}
-
-export interface PendingRequestStore {
-  register(id: string, timeoutMs: number): Promise<unknown>;
-  resolve(id: string, payload: unknown): boolean;
-  reject(id: string, error: Error): boolean;
-  rejectAll(error: Error): void;
-}
+export { createJsonlFramer } from "./process-manager-jsonl.ts";
+export { createPendingRequestStore } from "./process-manager-pending.ts";
+export type { JsonlFramer } from "./process-manager-jsonl.ts";
+export type { PendingRequestStore } from "./process-manager-pending.ts";
 
 export interface StartProcessOptions {
   executable: string;
@@ -41,100 +31,6 @@ export interface PiRpcProcessManager {
   send(command: RpcCommand, timeoutMs: number): Promise<RpcResponse>;
   onEvent(listener: (event: ProcessEvent) => void): Unsubscribe;
   isRunning(): boolean;
-}
-
-interface PendingRequest {
-  resolve(value: unknown): void;
-  reject(error: Error): void;
-  timeout: NodeJS.Timeout;
-}
-
-export function createJsonlFramer(): JsonlFramer {
-  let buffer = "";
-
-  return {
-    push(chunk) {
-      buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
-      return takeJsonlEntries(
-        () => buffer,
-        (nextBuffer) => {
-          buffer = nextBuffer;
-        },
-      );
-    },
-  };
-}
-
-function takeJsonlEntries(read: () => string, write: (value: string) => void): unknown[] {
-  const payloads: unknown[] = [];
-  let working = read();
-
-  while (true) {
-    const newlineIndex = working.indexOf("\n");
-    if (newlineIndex < 0) break;
-
-    const line = working.slice(0, newlineIndex).replace(/\r$/, "");
-    working = working.slice(newlineIndex + 1);
-    if (!line.trim()) continue;
-
-    try {
-      payloads.push(JSON.parse(line) as unknown);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Invalid JSONL payload: ${detail}`);
-    }
-  }
-
-  write(working);
-  return payloads;
-}
-
-export function createPendingRequestStore(): PendingRequestStore {
-  const pending = new Map<string, PendingRequest>();
-
-  return {
-    register(id, timeoutMs) {
-      if (pending.has(id)) {
-        throw new Error(`Duplicate RPC request id: ${id}`);
-      }
-
-      return new Promise<unknown>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          pending.delete(id);
-          reject(new Error(`RPC timeout for request ${id}`));
-        }, timeoutMs);
-
-        pending.set(id, { resolve, reject, timeout });
-      });
-    },
-    resolve(id, payload) {
-      return complete(pending, id, payload, undefined);
-    },
-    reject(id, error) {
-      return complete(pending, id, undefined, error);
-    },
-    rejectAll(error) {
-      for (const id of pending.keys()) {
-        complete(pending, id, undefined, error);
-      }
-    },
-  };
-}
-
-function complete(
-  pending: Map<string, PendingRequest>,
-  id: string,
-  payload: unknown,
-  error: Error | undefined,
-): boolean {
-  const entry = pending.get(id);
-  if (!entry) return false;
-
-  clearTimeout(entry.timeout);
-  pending.delete(id);
-  if (error) entry.reject(error);
-  else entry.resolve(payload);
-  return true;
 }
 
 export function createPiRpcProcessManager(): PiRpcProcessManager {
@@ -198,7 +94,16 @@ class NodePiRpcProcessManager implements PiRpcProcessManager {
   private bindStdout(child: ChildProcessWithoutNullStreams): void {
     child.stdout.on("data", (chunk) => {
       const payloads = this.framer.push(chunk);
-      for (const payload of payloads) this.onPayload(payload);
+      for (const payload of payloads) {
+        dispatchProcessPayload(payload, {
+          emit: (event) => {
+            this.events.emit(event);
+          },
+          resolvePending: (id, response) => {
+            this.pending.resolve(id, response);
+          },
+        });
+      }
     });
   }
 
@@ -217,29 +122,6 @@ class NodePiRpcProcessManager implements PiRpcProcessManager {
       if (this.child === child) this.child = undefined;
       this.pending.rejectAll(new Error("Pi RPC process exited."));
       this.events.emit({ type: "process_exit", code, signal });
-    });
-  }
-
-  private onPayload(payload: unknown): void {
-    if (isRpcResponse(payload)) {
-      this.events.emit({
-        type: "rpc_response",
-        id: payload.id,
-        command: payload.command,
-        success: payload.success,
-        payload,
-      });
-      if (payload.id) this.pending.resolve(payload.id, payload);
-      else this.events.emit(payload);
-      return;
-    }
-    if (isRpcExtensionUiRequest(payload) || isAgentEventLike(payload)) {
-      this.events.emit(payload);
-      return;
-    }
-    this.events.emit({
-      type: "stderr",
-      message: `Unknown RPC payload: ${JSON.stringify(payload)}`,
     });
   }
 }

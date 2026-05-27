@@ -1,4 +1,17 @@
 import type { CommandResult, CommandUiRequest } from "../protocol.ts";
+import { resolveCommandUiKeyAction } from "./command-ui-actions.ts";
+import {
+  applyCommandUiResult,
+  clearCommandUiResult,
+  hideCommandUiPanel,
+  renderCommandUiItems,
+} from "./command-ui-dom.ts";
+import {
+  clearCommandUiState,
+  createCommandUiState,
+  readCommandUiSelectionPayload,
+  setCommandUiRequest,
+} from "./command-ui-state.ts";
 
 interface CommandUiOptions {
   panel: HTMLElement;
@@ -18,48 +31,30 @@ export interface CommandUiController {
 }
 
 export function createCommandUiController(options: CommandUiOptions): CommandUiController {
-  let currentRequest: CommandUiRequest | undefined;
-  let selectedIndex = 0;
+  const state = createCommandUiState();
 
   function hidePanel(): void {
-    currentRequest = undefined;
-    selectedIndex = 0;
-    options.panel.classList.add("hidden");
-    options.list.replaceChildren();
+    clearCommandUiState(state);
+    hideCommandUiPanel(options.panel, options.list);
   }
 
   function postSelection(index: number): void {
-    const request = currentRequest;
-    if (!request) return;
-    const item = request.items[index];
-    if (!item) return;
-    options.postResponse(request.id, item.payload ?? { selectedId: item.id });
+    const selection = readCommandUiSelectionPayload(state, index);
+    if (!selection) return;
+    options.postResponse(selection.requestId, selection.payload);
     hidePanel();
   }
 
   function renderItems(): void {
-    const request = currentRequest;
+    const request = state.currentRequest;
     if (!request) {
       options.list.replaceChildren();
       return;
     }
-    options.list.replaceChildren(
-      ...request.items.map((item, index) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "command-ui-item";
-        if (item.active) button.classList.add("is-active");
-        if (index === selectedIndex) button.classList.add("is-selected");
-        button.style.setProperty("--command-depth", `${item.depth ?? 0}`);
-        button.dataset.commandUiItem = item.id;
-        button.textContent = item.label;
-        button.addEventListener("click", () => {
-          selectedIndex = index;
-          postSelection(index);
-        });
-        return button;
-      }),
-    );
+    renderCommandUiItems(options.list, request.items, state.selectedIndex, (index) => {
+      state.selectedIndex = index;
+      postSelection(index);
+    });
   }
 
   return {
@@ -71,53 +66,36 @@ export function createCommandUiController(options: CommandUiOptions): CommandUiC
       if (result.copyText) {
         await navigator.clipboard?.writeText(result.copyText);
       }
-      options.result.textContent = result.message ?? "";
-      options.result.dataset.status = result.status;
-      options.result.classList.toggle("hidden", !result.message);
+      applyCommandUiResult(options.result, result);
       hidePanel();
     },
     clearResult() {
-      options.result.textContent = "";
-      options.result.classList.add("hidden");
-      delete options.result.dataset.status;
+      clearCommandUiResult(options.result);
     },
     handleKeydown(event) {
-      if (!currentRequest) return false;
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        if (currentRequest.items.length === 0) return true;
-        selectedIndex = (selectedIndex + 1) % currentRequest.items.length;
+      const action = resolveCommandUiKeyAction(state, event.key, event.shiftKey);
+      if (action.type === "ignore") return false;
+      event.preventDefault();
+      if (action.type === "rerender") {
         renderItems();
         return true;
       }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        if (currentRequest.items.length === 0) return true;
-        selectedIndex =
-          (selectedIndex - 1 + currentRequest.items.length) % currentRequest.items.length;
-        renderItems();
-        return true;
-      }
-      if (event.key === "Enter" && !event.shiftKey) {
-        event.preventDefault();
-        postSelection(selectedIndex);
-        return true;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        options.postResponse(currentRequest.id, null);
+      if (action.type === "submit") {
+        options.postResponse(action.requestId, action.payload);
         hidePanel();
         return true;
       }
-      return false;
+      if (action.type === "cancel") {
+        options.postResponse(action.requestId, null);
+        hidePanel();
+      }
+      return true;
     },
     isVisible() {
-      return !!currentRequest && !options.panel.classList.contains("hidden");
+      return !!state.currentRequest && !options.panel.classList.contains("hidden");
     },
     renderRequest(request) {
-      currentRequest = request;
-      selectedIndex = request.items.findIndex((item) => item.active);
-      if (selectedIndex < 0) selectedIndex = 0;
+      setCommandUiRequest(state, request);
       renderItems();
       options.panel.classList.toggle("hidden", request.items.length === 0);
       this.clearResult();

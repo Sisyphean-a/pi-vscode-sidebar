@@ -290,6 +290,57 @@ describe("SidebarController", () => {
     ).toBe(true);
   });
 
+  it("reuses cached dynamic slash commands across run_command calls", async () => {
+    const harness = createHarness({
+      commandData: {
+        get_commands: {
+          commands: [
+            {
+              name: "cg-status",
+              description: "Show CodeGraph status",
+              source: "extension",
+              sourceInfo: {
+                path: "E:\\github\\pi\\.pi\\extensions\\codegraph.ts",
+                source: "local",
+                scope: "user",
+                origin: "top-level",
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "cg-status",
+      rawInput: "/cg-status",
+    });
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "cg-status",
+      rawInput: "/cg-status",
+    });
+
+    expect(
+      harness.sentCommands.filter(
+        (command) =>
+          typeof command === "object" &&
+          !!command &&
+          (command as { type?: string }).type === "get_commands",
+      ),
+    ).toHaveLength(1);
+    expect(
+      harness.sentCommands.filter(
+        (command) =>
+          typeof command === "object" &&
+          !!command &&
+          (command as { type?: string; message?: string }).type === "prompt" &&
+          (command as { type?: string; message?: string }).message === "/cg-status",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("includes recent session summaries in state payloads", async () => {
     const harness = createHarness({
       recentSessions: [
@@ -449,10 +500,7 @@ describe("SidebarController", () => {
     const lastState = [...harness.emitted]
       .reverse()
       .find(
-        (item) =>
-          typeof item === "object" &&
-          item &&
-          (item as { type?: string }).type === "state",
+        (item) => typeof item === "object" && item && (item as { type?: string }).type === "state",
       ) as { data?: { view?: { phase?: string } } } | undefined;
 
     expect(lastState?.data?.view?.phase).toBe("idle");
@@ -513,6 +561,106 @@ describe("SidebarController", () => {
     expect(harness.sentCommands).toContainEqual({
       type: "compact",
       customInstructions: undefined,
+    });
+  });
+
+  it("rejects /name without a session title", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "name",
+      rawInput: "/name",
+    });
+
+    expect(harness.sentCommands).toEqual([]);
+    expect(harness.emitted).toContainEqual({
+      type: "command_result",
+      data: {
+        status: "error",
+        message: "会话名称不能为空",
+        restoreInput: "/name",
+      },
+    });
+  });
+
+  it("returns copy text for /copy when the last assistant message exists", async () => {
+    const harness = createHarness({
+      commandData: {
+        get_last_assistant_text: {
+          text: "整理后的最终答案",
+        },
+      },
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "copy",
+      rawInput: "/copy",
+      correlationId: "copy-1",
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "get_last_assistant_text",
+      id: "copy-1",
+    });
+    expect(harness.emitted).toContainEqual({
+      type: "command_result",
+      data: {
+        status: "success",
+        message: "已复制",
+        copyText: "整理后的最终答案",
+      },
+    });
+  });
+
+  it("returns exported path for /export when export succeeds", async () => {
+    const harness = createHarness({
+      commandData: {
+        export_html: {
+          path: "C:\\exports\\session.html",
+        },
+      },
+    });
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "export",
+      rawInput: "/export C:\\exports\\session.html",
+      correlationId: "export-1",
+    });
+
+    expect(harness.sentCommands).toContainEqual({
+      type: "export_html",
+      outputPath: "C:\\exports\\session.html",
+      id: "export-1",
+    });
+    expect(harness.emitted).toContainEqual({
+      type: "command_result",
+      data: {
+        status: "success",
+        message: "已导出：C:\\exports\\session.html",
+      },
+    });
+  });
+
+  it("returns an error result for an unsupported slash command", async () => {
+    const harness = createHarness();
+
+    await harness.controller.handleUiMessage({
+      type: "run_command",
+      name: "unknown-command",
+      rawInput: "/unknown-command",
+    });
+
+    expect(harness.sentCommands).toContainEqual({ type: "get_commands" });
+    expect(harness.emitted).toContainEqual({
+      type: "command_result",
+      data: {
+        status: "error",
+        message: "未实现命令：/unknown-command",
+        restoreInput: "/unknown-command",
+      },
     });
   });
 

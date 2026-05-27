@@ -1,7 +1,19 @@
-export interface ComposerPickerOption {
-  value: string;
-  label: string;
-}
+import {
+  resolveComposerPickerDismissAction,
+  resolveComposerPickerOpenedElsewhereAction,
+  resolveComposerPickerSelectionAction,
+  resolveComposerPickerTriggerAction,
+} from "./composer-picker-actions.ts";
+import {
+  createComposerPickerState,
+  hasComposerPickerOption,
+  setComposerPickerFallbackLabel,
+  setComposerPickerOptions,
+  setComposerPickerValue,
+  type ComposerPickerOption,
+  type ComposerPickerState,
+} from "./composer-picker-state.ts";
+import { syncComposerPickerUi, type ComposerPickerDomRefs } from "./composer-picker-dom.ts";
 
 export interface ComposerPicker {
   hasOption(value: string): boolean;
@@ -20,119 +32,102 @@ interface CreateComposerPickerOptions {
 }
 
 export function createComposerPicker(options: CreateComposerPickerOptions): ComposerPicker {
-  let currentValue = "";
-  let currentOptions: ComposerPickerOption[] = [];
-  let fallbackLabel = "";
+  const refs = createComposerPickerRefs(options);
+  const state = createComposerPickerState();
 
-  options.trigger.addEventListener("click", () => {
-    if (options.trigger.disabled || currentOptions.length === 0) return;
-    if (isOpen()) {
-      close();
-      return;
+  bindTriggerToggle(refs, state);
+  bindOptionSelection(options, refs, state);
+  bindDismissListeners(refs, state);
+  renderComposerPicker(refs, state);
+
+  return {
+    hasOption(value) {
+      return hasComposerPickerOption(state, value);
+    },
+    setDisabled(disabled) {
+      refs.trigger.disabled = disabled;
+      refs.root.classList.toggle("is-disabled", disabled);
+      if (disabled) resolveComposerPickerDismissAction(state);
+      renderComposerPicker(refs, state);
+    },
+    setFallbackLabel(label) {
+      setComposerPickerFallbackLabel(state, label);
+      renderComposerPicker(refs, state);
+    },
+    setOptions(nextOptions) {
+      setComposerPickerOptions(state, nextOptions);
+      renderComposerPicker(refs, state);
+    },
+    setValue(value) {
+      setComposerPickerValue(state, value);
+      renderComposerPicker(refs, state);
+    },
+  };
+}
+
+function createComposerPickerRefs(options: CreateComposerPickerOptions): ComposerPickerDomRefs {
+  return {
+    root: options.root,
+    trigger: options.trigger,
+    panel: options.panel,
+    list: options.list,
+  };
+}
+
+function bindTriggerToggle(refs: ComposerPickerDomRefs, state: ComposerPickerState): void {
+  refs.trigger.addEventListener("click", () => {
+    const action = resolveComposerPickerTriggerAction(state, refs.trigger.disabled);
+    if (action === "ignore") return;
+    if (action === "open") {
+      document.dispatchEvent(new CustomEvent("composer-picker:open", { detail: refs.root.id }));
     }
-    document.dispatchEvent(new CustomEvent("composer-picker:open", { detail: options.root.id }));
-    open();
+    renderComposerPicker(refs, state);
   });
+}
 
-  options.list.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const button = target.closest<HTMLButtonElement>(".composer-picker-option");
+function bindOptionSelection(
+  options: CreateComposerPickerOptions,
+  refs: ComposerPickerDomRefs,
+  state: ComposerPickerState,
+): void {
+  refs.list.addEventListener("click", (event) => {
+    const button = readComposerPickerButton(event.target);
     if (!button || button.disabled) return;
-    const nextValue = button.dataset.value ?? "";
-    close();
-    if (!nextValue || nextValue === currentValue) return;
-    currentValue = nextValue;
-    syncTrigger();
-    syncSelection();
-    options.onChange(nextValue);
+    const action = resolveComposerPickerSelectionAction(state, button.dataset.value ?? "");
+    if (action.type === "ignore") return;
+    renderComposerPicker(refs, state);
+    if (action.type === "change") {
+      options.onChange(action.value);
+    }
   });
+}
 
+function bindDismissListeners(refs: ComposerPickerDomRefs, state: ComposerPickerState): void {
   document.addEventListener("click", (event) => {
-    if (!(event.target instanceof Node)) return;
-    if (options.root.contains(event.target)) return;
-    close();
+    if (!(event.target instanceof Node) || refs.root.contains(event.target)) return;
+    if (!resolveComposerPickerDismissAction(state)) return;
+    renderComposerPicker(refs, state);
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") close();
+    if (event.key !== "Escape" || !resolveComposerPickerDismissAction(state)) return;
+    renderComposerPicker(refs, state);
   });
 
   document.addEventListener("composer-picker:open", (event) => {
     const customEvent = event as CustomEvent<string>;
-    if (customEvent.detail !== options.root.id) close();
+    if (!resolveComposerPickerOpenedElsewhereAction(state, customEvent.detail, refs.root.id)) {
+      return;
+    }
+    renderComposerPicker(refs, state);
   });
+}
 
-  return {
-    hasOption(value) {
-      return currentOptions.some((option) => option.value === value);
-    },
-    setDisabled(disabled) {
-      options.trigger.disabled = disabled;
-      options.root.classList.toggle("is-disabled", disabled);
-      if (disabled) close();
-    },
-    setFallbackLabel(label) {
-      fallbackLabel = label;
-      syncTrigger();
-    },
-    setOptions(nextOptions) {
-      currentOptions = [...nextOptions];
-      renderOptions();
-      syncSelection();
-      syncTrigger();
-      options.root.classList.toggle("has-options", currentOptions.length > 0);
-      if (currentOptions.length === 0) close();
-    },
-    setValue(value) {
-      currentValue = value;
-      syncSelection();
-      syncTrigger();
-    },
-  };
+function renderComposerPicker(refs: ComposerPickerDomRefs, state: ComposerPickerState): void {
+  syncComposerPickerUi(refs, state);
+}
 
-  function renderOptions(): void {
-    options.list.replaceChildren(
-      ...currentOptions.map((option) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "composer-picker-option";
-        button.dataset.value = option.value;
-        button.textContent = option.label;
-        button.setAttribute("role", "option");
-        return button;
-      }),
-    );
-  }
-
-  function syncSelection(): void {
-    const buttons = options.list.querySelectorAll<HTMLButtonElement>(".composer-picker-option");
-    buttons.forEach((button) => {
-      const selected = button.dataset.value === currentValue;
-      button.classList.toggle("is-selected", selected);
-      button.setAttribute("aria-selected", selected ? "true" : "false");
-    });
-  }
-
-  function syncTrigger(): void {
-    const selected = currentOptions.find((option) => option.value === currentValue);
-    options.trigger.dataset.value = currentValue;
-    options.trigger.textContent = selected?.label ?? fallbackLabel;
-  }
-
-  function open(): void {
-    options.root.classList.add("is-open");
-    options.panel.classList.remove("hidden");
-    options.trigger.setAttribute("aria-expanded", "true");
-  }
-
-  function close(): void {
-    options.root.classList.remove("is-open");
-    options.panel.classList.add("hidden");
-    options.trigger.setAttribute("aria-expanded", "false");
-  }
-
-  function isOpen(): boolean {
-    return options.root.classList.contains("is-open");
-  }
+function readComposerPickerButton(target: EventTarget | null): HTMLButtonElement | undefined {
+  if (!(target instanceof HTMLElement)) return undefined;
+  return target.closest<HTMLButtonElement>(".composer-picker-option") ?? undefined;
 }

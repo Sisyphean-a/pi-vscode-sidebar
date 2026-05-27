@@ -255,6 +255,62 @@ describe("SidebarViewProvider", () => {
     ).toBe(true);
   });
 
+  it("forwards ui messages to the controller after provider-specific handling", async () => {
+    const handledMessages: unknown[] = [];
+    let receivedHandler: ((payload: unknown) => void) | undefined;
+
+    const provider: SidebarViewProviderHandle = createSidebarViewProvider({
+      extensionUri: { path: "ext", fsPath: "ext" } as never,
+      controller: {
+        connect() {
+          return () => {};
+        },
+        async handleUiMessage(message) {
+          handledMessages.push(message);
+        },
+        async dispose() {},
+      },
+    });
+
+    provider.resolveWebviewView(
+      {
+        webview: {
+          options: {},
+          html: "",
+          asWebviewUri(uri: unknown) {
+            return uri as never;
+          },
+          onDidReceiveMessage(handler: (payload: unknown) => void) {
+            receivedHandler = handler;
+            return { dispose() {} };
+          },
+          async postMessage() {
+            return true;
+          },
+        },
+        onDidDispose() {},
+      } as never,
+      {} as never,
+      {} as never,
+    );
+
+    await receivedHandler?.({ type: "ui_ready" });
+    await receivedHandler?.({
+      type: "run_command",
+      name: "compact",
+      rawInput: "/compact",
+      correlationId: "run-1",
+    });
+
+    expect(handledMessages).toContainEqual({ type: "ui_ready" });
+    expect(handledMessages).toContainEqual({
+      type: "run_command",
+      name: "compact",
+      rawInput: "/compact",
+      correlationId: "run-1",
+    });
+  });
+
   it("opens file reference location when webview asks for it", async () => {
     const vscode = await import("vscode");
     let receivedHandler: ((payload: unknown) => void) | undefined;

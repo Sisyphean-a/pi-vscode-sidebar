@@ -2104,7 +2104,8 @@ describe("sidebar webview app", () => {
         typeof message === "object" &&
         !!message &&
         (message as { type?: string }).type === "send_prompt",
-    ) as { text?: string; images?: Array<{ type: string; data: string; mimeType: string }> }
+    ) as
+      | { text?: string; images?: Array<{ type: string; data: string; mimeType: string }> }
       | undefined;
 
     expect(sendPromptMessage).toMatchObject({
@@ -2186,9 +2187,8 @@ describe("sidebar webview app", () => {
       }
     }
 
-    (
-      globalThis as unknown as { FileReader: typeof MockFileReader }
-    ).FileReader = MockFileReader as never;
+    (globalThis as unknown as { FileReader: typeof MockFileReader }).FileReader =
+      MockFileReader as never;
 
     await import("../../../src/view/webview/app.ts");
 
@@ -2240,7 +2240,9 @@ describe("sidebar webview app", () => {
     prompt.dispatchEvent(pasteEvent);
     await waitForFlush();
 
-    expect(document.querySelector("#message-feed")?.textContent).toContain("当前模型不支持图片输入");
+    expect(document.querySelector("#message-feed")?.textContent).toContain(
+      "当前模型不支持图片输入",
+    );
     expect(
       postedMessages.some(
         (message) =>
