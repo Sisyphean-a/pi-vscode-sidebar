@@ -73,6 +73,42 @@ describe("provider message handler", () => {
     expect(steps).toEqual(["ready", "controller"]);
   });
 
+  it("serializes send_prompt behind a pending ui_ready flow", async () => {
+    const handledTypes: string[] = [];
+    let releaseReady!: () => void;
+    const readyGate = new Promise<void>((resolve) => {
+      releaseReady = resolve;
+    });
+    const handler = createProviderMessageHandler({
+      controller: {
+        async handleUiMessage(message) {
+          handledTypes.push(message.type);
+        },
+      },
+      createPastedImageAttachment: vi.fn(),
+      markWebviewReady: vi.fn(async () => {
+        await readyGate;
+      }),
+      openFileReference: vi.fn(),
+      pickImageAttachments: vi.fn(),
+      postHostMessage: vi.fn(),
+      showInvalidMessage: vi.fn(),
+    });
+
+    const readyPromise = handler.handle({ type: "ui_ready" });
+    await Promise.resolve();
+    const sendPromptPromise = handler.handle({ type: "send_prompt", text: "hi" });
+    await Promise.resolve();
+
+    expect(handledTypes).toEqual([]);
+
+    releaseReady();
+    await readyPromise;
+    await sendPromptPromise;
+
+    expect(handledTypes).toEqual(["ui_ready", "send_prompt"]);
+  });
+
   it("posts picked image attachments back to the webview", async () => {
     const postHostMessage = vi.fn();
     const attachments = [

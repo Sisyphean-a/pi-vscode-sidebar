@@ -23,15 +23,21 @@ describe("log broadcaster", () => {
     expect(second).toHaveBeenLastCalledWith('{"message":"two"}');
   });
 
-  it("does not replay historical lines to new subscribers", () => {
+  it("starts buffering only after recording begins and supports clearing history", () => {
     const broadcaster = createLogBroadcaster();
-    const listener = vi.fn();
+    const statefulBroadcaster = broadcaster as typeof broadcaster & {
+      clear(): void;
+      readHistory(): string[];
+      startRecording(): void;
+    };
 
     broadcaster.publish('{"message":"before"}');
-    broadcaster.subscribe(listener);
+    statefulBroadcaster.startRecording?.();
     broadcaster.publish('{"message":"after"}');
 
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener).toHaveBeenCalledWith('{"message":"after"}');
+    expect(statefulBroadcaster.readHistory?.()).toEqual(['{"message":"after"}']);
+
+    statefulBroadcaster.clear?.();
+    expect(statefulBroadcaster.readHistory?.()).toEqual([]);
   });
 });

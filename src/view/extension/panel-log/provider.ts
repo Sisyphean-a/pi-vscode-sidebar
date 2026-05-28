@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
 import type { LogBroadcaster } from "../../../host/log-broadcaster.ts";
-import { parseUiMessage } from "../../protocol.ts";
+import { parsePanelLogUiMessage } from "../../webview/panel-log-message-parsing.ts";
 import { renderPanelLogWebviewHtml } from "./webview-html.ts";
 
 export interface CreatePanelLogViewProviderOptions {
@@ -23,15 +23,22 @@ class PanelLogViewProvider implements vscode.WebviewViewProvider {
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    this.broadcaster.startRecording();
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist", "webview")],
     };
     view.webview.html = renderPanelLogWebviewHtml(this.extensionUri, view.webview);
     view.webview.onDidReceiveMessage((payload: unknown) => {
-      const message = parseUiMessage(payload);
-      if (!message || message.type !== "ui_ready") return;
+      const message = parsePanelLogUiMessage(payload);
+      if (!message) return;
+      if (message.type === "clear_panel_logs") {
+        this.broadcaster.clear();
+        void view.webview.postMessage({ type: "log_reset" });
+        return;
+      }
       this.isReady = true;
+      this.pushHistory(view);
       this.syncSubscription(view);
     });
     view.onDidChangeVisibility(() => {
@@ -55,6 +62,13 @@ class PanelLogViewProvider implements vscode.WebviewViewProvider {
     if (this.unsubscribeLogs) return;
     this.unsubscribeLogs = this.broadcaster.subscribe((line) => {
       void view.webview.postMessage({ type: "log_entry", line });
+    });
+  }
+
+  private pushHistory(view: vscode.WebviewView): void {
+    void view.webview.postMessage({
+      type: "log_history",
+      lines: this.broadcaster.readHistory(),
     });
   }
 
