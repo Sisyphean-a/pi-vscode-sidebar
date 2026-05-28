@@ -1,4 +1,4 @@
-import { readString } from "./ui-text.ts";
+import { readString } from "./activity-event-zod.ts";
 
 interface VsCodePoster {
   postMessage(message: object): void;

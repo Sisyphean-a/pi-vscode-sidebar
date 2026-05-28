@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type RpcCommandScope = "user" | "project" | "temporary";
@@ -121,26 +123,83 @@ export type RpcExtensionUIResponse =
 
 export type RpcOutputMessage = RpcResponse | AgentEventLike | RpcExtensionUIRequest;
 
-export function isRpcResponse(value: unknown): value is RpcResponse {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return record.type === "response" && typeof record.command === "string";
-}
-
-export function isRpcExtensionUiRequest(value: unknown): value is RpcExtensionUIRequest {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return record.type === "extension_ui_request" && typeof record.id === "string";
-}
-
-export function isAgentEventLike(value: unknown): value is AgentEventLike {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  if (typeof record.type !== "string") return false;
-  return EVENT_TYPES.has(record.type as AgentEventType);
-}
-
-const EVENT_TYPES = new Set<AgentEventType>([
+const NonEmptyStringSchema = z.string().min(1);
+const OptionalIdSchema = z.string().optional();
+const RpcResponseSchema: z.ZodType<RpcResponse> = z.discriminatedUnion("success", [
+  z.object({
+    id: OptionalIdSchema,
+    type: z.literal("response"),
+    command: NonEmptyStringSchema,
+    success: z.literal(true),
+    data: z.unknown().optional(),
+  }),
+  z.object({
+    id: OptionalIdSchema,
+    type: z.literal("response"),
+    command: NonEmptyStringSchema,
+    success: z.literal(false),
+    error: NonEmptyStringSchema,
+  }),
+]);
+const RpcExtensionUiRequestSchema: z.ZodType<RpcExtensionUIRequest> = z.discriminatedUnion(
+  "method",
+  [
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("select"),
+      title: NonEmptyStringSchema,
+      options: z.array(z.string()),
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("confirm"),
+      title: NonEmptyStringSchema,
+      message: NonEmptyStringSchema,
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("input"),
+      title: NonEmptyStringSchema,
+      placeholder: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("editor"),
+      title: NonEmptyStringSchema,
+      prefill: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("notify"),
+      message: NonEmptyStringSchema,
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("setStatus"),
+      statusKey: NonEmptyStringSchema,
+      statusText: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("setTitle"),
+      title: NonEmptyStringSchema,
+    }),
+    z.object({
+      type: z.literal("extension_ui_request"),
+      id: NonEmptyStringSchema,
+      method: z.literal("set_editor_text"),
+      text: z.string(),
+    }),
+  ],
+);
+const AgentEventTypeSchema = z.enum([
   "agent_start",
   "agent_end",
   "session_info_changed",
@@ -154,3 +213,18 @@ const EVENT_TYPES = new Set<AgentEventType>([
   "tool_execution_update",
   "tool_execution_end",
 ]);
+const AgentEventLikeSchema: z.ZodType<AgentEventLike> = z
+  .object({ type: AgentEventTypeSchema })
+  .catchall(z.unknown());
+
+export function isRpcResponse(value: unknown): value is RpcResponse {
+  return RpcResponseSchema.safeParse(value).success;
+}
+
+export function isRpcExtensionUiRequest(value: unknown): value is RpcExtensionUIRequest {
+  return RpcExtensionUiRequestSchema.safeParse(value).success;
+}
+
+export function isAgentEventLike(value: unknown): value is AgentEventLike {
+  return AgentEventLikeSchema.safeParse(value).success;
+}

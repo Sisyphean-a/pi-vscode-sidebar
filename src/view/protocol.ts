@@ -1,4 +1,8 @@
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+import { z } from "zod";
+
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 export interface UiImageInput {
   type: "image";
@@ -63,201 +67,152 @@ export type HostToUiMessage =
   | { type: "event"; data: unknown }
   | { type: "insert_prompt_reference"; data: unknown }
   | { type: "image_attachments_added"; data: { attachments: UiPendingImageAttachment[] } }
-  | { type: "extension_ui_request"; data: unknown }
+  | { type: "extension_ui_request"; data: Record<string, unknown> }
   | { type: "command_ui_request"; data: CommandUiRequest }
   | { type: "command_result"; data: CommandResult }
   | { type: "error"; scope: "rpc" | "bridge" | "ui"; message: string }
   | { type: "notice"; message: string };
 
+const NonEmptyStringSchema = z.string().min(1);
+const UiImageInputSchema: z.ZodType<UiImageInput> = z.object({
+  type: z.literal("image"),
+  data: NonEmptyStringSchema,
+  mimeType: NonEmptyStringSchema,
+});
+const PlainObjectSchema: z.ZodType<Record<string, unknown>> = z.object({}).catchall(z.unknown());
+const CorrelationCarrierSchema = z.object({
+  correlationId: NonEmptyStringSchema,
+});
+const CommandUiItemSchema: z.ZodType<CommandUiItem> = z.object({
+  id: NonEmptyStringSchema,
+  label: NonEmptyStringSchema,
+  detail: z.string().optional(),
+  depth: z.number().finite().optional(),
+  active: z.boolean().optional(),
+  payload: PlainObjectSchema.optional(),
+});
+const CommandUiRequestSchema: z.ZodType<CommandUiRequest> = z.object({
+  id: NonEmptyStringSchema,
+  kind: z.enum(["session_list", "model_list", "message_list", "session_tree"]),
+  items: z.array(CommandUiItemSchema),
+});
+const CommandResultSchema: z.ZodType<CommandResult> = z.object({
+  status: z.enum(["success", "error"]),
+  message: z.string().optional(),
+  restoreInput: z.string().optional(),
+  copyText: z.string().optional(),
+});
+const UiPendingImageAttachmentSchema: z.ZodType<UiPendingImageAttachment> = z.object({
+  id: NonEmptyStringSchema,
+  name: NonEmptyStringSchema,
+  previewUrl: NonEmptyStringSchema,
+  image: UiImageInputSchema,
+});
+const UiToHostMessagePayloadSchema: z.ZodType<UiToHostMessagePayload> = z.discriminatedUnion(
+  "type",
+  [
+    z.object({ type: z.literal("ui_ready") }),
+    z.object({ type: z.literal("abort") }),
+    z.object({ type: z.literal("new_session") }),
+    z.object({ type: z.literal("pick_image_attachments") }),
+    z.object({
+      type: z.literal("send_prompt"),
+      text: NonEmptyStringSchema,
+      images: z.array(UiImageInputSchema).optional(),
+    }),
+    z.object({
+      type: z.literal("store_pasted_image_attachment"),
+      dataUrl: NonEmptyStringSchema,
+      mimeType: NonEmptyStringSchema,
+      name: NonEmptyStringSchema.optional(),
+    }),
+    z.object({
+      type: z.literal("run_command"),
+      name: NonEmptyStringSchema,
+      rawInput: NonEmptyStringSchema,
+      args: PlainObjectSchema.optional(),
+    }),
+    z.object({
+      type: z.literal("respond_command_ui"),
+      requestId: NonEmptyStringSchema,
+      payload: z.unknown(),
+    }),
+    z.object({
+      type: z.literal("open_file_reference"),
+      path: NonEmptyStringSchema,
+      startLine: z.number().finite(),
+      endLine: z.number().finite().optional(),
+    }),
+    z.object({
+      type: z.literal("switch_session"),
+      sessionPath: NonEmptyStringSchema,
+    }),
+    z.object({
+      type: z.literal("set_session_name"),
+      name: NonEmptyStringSchema,
+    }),
+    z.object({
+      type: z.literal("export_html"),
+      outputPath: z.string().optional(),
+    }),
+    z.object({ type: z.literal("get_available_models") }),
+    z.object({ type: z.literal("get_session_stats") }),
+    z.object({
+      type: z.literal("set_model"),
+      provider: NonEmptyStringSchema,
+      modelId: NonEmptyStringSchema,
+    }),
+    z.object({
+      type: z.literal("set_thinking_level"),
+      level: z.enum(THINKING_LEVELS),
+    }),
+    z.object({
+      type: z.literal("respond_extension_ui"),
+      requestId: NonEmptyStringSchema,
+      payload: z.unknown(),
+    }),
+  ],
+);
+const HostToUiMessageSchema: z.ZodType<HostToUiMessage> = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("state"), data: z.unknown() }),
+  z.object({ type: z.literal("event"), data: z.unknown() }),
+  z.object({ type: z.literal("insert_prompt_reference"), data: z.unknown() }),
+  z.object({
+    type: z.literal("image_attachments_added"),
+    data: z.object({ attachments: z.array(UiPendingImageAttachmentSchema) }),
+  }),
+  z.object({ type: z.literal("extension_ui_request"), data: PlainObjectSchema }),
+  z.object({ type: z.literal("command_ui_request"), data: CommandUiRequestSchema }),
+  z.object({ type: z.literal("command_result"), data: CommandResultSchema }),
+  z.object({
+    type: z.literal("error"),
+    scope: z.enum(["rpc", "bridge", "ui"]),
+    message: NonEmptyStringSchema,
+  }),
+  z.object({ type: z.literal("notice"), message: NonEmptyStringSchema }),
+]);
+
 export function parseUiMessage(input: unknown): UiToHostMessage | undefined {
-  const message = asRecord(input);
-  if (!message) return undefined;
-
-  const type = readString(message.type);
-  if (!type) return undefined;
-
-  switch (type) {
-    case "ui_ready":
-    case "abort":
-    case "new_session":
-    case "pick_image_attachments":
-      return withCorrelation({ type }, message);
-    case "send_prompt":
-      return withOptionalCorrelation(parseSendPrompt(message), message);
-    case "store_pasted_image_attachment":
-      return withOptionalCorrelation(parseStorePastedImageAttachment(message), message);
-    case "run_command":
-      return withOptionalCorrelation(parseRunCommand(message), message);
-    case "respond_command_ui":
-      return withOptionalCorrelation(parseCommandUiResponse(message), message);
-    case "open_file_reference":
-      return withOptionalCorrelation(parseOpenFileReference(message), message);
-    case "switch_session":
-      return withOptionalCorrelation(parseSwitchSession(message), message);
-    case "set_session_name":
-      return withOptionalCorrelation(parseSessionName(message), message);
-    case "export_html":
-      return withCorrelation(parseExportHtml(message), message);
-    case "get_available_models":
-      return withCorrelation({ type: "get_available_models" }, message);
-    case "get_session_stats":
-      return withCorrelation({ type: "get_session_stats" }, message);
-    case "set_model":
-      return withOptionalCorrelation(parseSetModel(message), message);
-    case "set_thinking_level":
-      return withOptionalCorrelation(parseThinkingLevel(message), message);
-    case "respond_extension_ui":
-      return withOptionalCorrelation(parseExtensionUiResponse(message), message);
-    default:
-      return undefined;
-  }
+  const parsed = UiToHostMessagePayloadSchema.safeParse(input);
+  if (!parsed.success) return undefined;
+  return withCorrelation(parsed.data, input);
 }
 
-function parseSessionName(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
-  const name = readString(message.name);
-  if (!name) return undefined;
-  return { type: "set_session_name", name };
-}
-
-function parseExportHtml(message: Record<string, unknown>): UiToHostMessagePayload {
-  const outputPath = readString(message.outputPath);
-  return outputPath ? { type: "export_html", outputPath } : { type: "export_html" };
-}
-
-function parseRunCommand(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
-  const name = readString(message.name);
-  const rawInput = readString(message.rawInput);
-  if (!name || !rawInput) return undefined;
-  const args = asRecord(message.args);
-  return args
-    ? { type: "run_command", name, rawInput, args }
-    : { type: "run_command", name, rawInput };
-}
-
-function parseCommandUiResponse(
-  message: Record<string, unknown>,
-): UiToHostMessagePayload | undefined {
-  const requestId = readString(message.requestId);
-  if (!requestId) return undefined;
-  return { type: "respond_command_ui", requestId, payload: message.payload };
-}
-
-function parseSendPrompt(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
-  const text = readString(message.text);
-  if (!text) return undefined;
-  const images = parseImages(message.images);
-  if (message.images !== undefined && !images) return undefined;
-  return images ? { type: "send_prompt", text, images } : { type: "send_prompt", text };
-}
-
-function parseSwitchSession(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
-  const sessionPath = readString(message.sessionPath);
-  if (!sessionPath) return undefined;
-  return { type: "switch_session", sessionPath };
-}
-
-function parseOpenFileReference(
-  message: Record<string, unknown>,
-): UiToHostMessagePayload | undefined {
-  const path = readString(message.path);
-  const startLine = readNumber(message.startLine);
-  const endLine = readOptionalNumber(message.endLine);
-  if (!path || startLine === undefined) return undefined;
-  return endLine === undefined
-    ? { type: "open_file_reference", path, startLine }
-    : { type: "open_file_reference", path, startLine, endLine };
-}
-
-function parseSetModel(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
-  const provider = readString(message.provider);
-  const modelId = readString(message.modelId);
-  if (!provider || !modelId) return undefined;
-  return { type: "set_model", provider, modelId };
-}
-
-function parseThinkingLevel(message: Record<string, unknown>): UiToHostMessagePayload | undefined {
-  const level = readString(message.level);
-  if (!isThinkingLevel(level)) return undefined;
-  return { type: "set_thinking_level", level };
-}
-
-function parseExtensionUiResponse(
-  message: Record<string, unknown>,
-): UiToHostMessagePayload | undefined {
-  const requestId = readString(message.requestId);
-  if (!requestId) return undefined;
-  return { type: "respond_extension_ui", requestId, payload: message.payload };
-}
-
-function parseStorePastedImageAttachment(
-  message: Record<string, unknown>,
-): UiToHostMessagePayload | undefined {
-  const dataUrl = readString(message.dataUrl);
-  const mimeType = readString(message.mimeType);
-  const name = readString(message.name);
-  if (!dataUrl || !mimeType) return undefined;
-  return name
-    ? { type: "store_pasted_image_attachment", dataUrl, mimeType, name }
-    : { type: "store_pasted_image_attachment", dataUrl, mimeType };
-}
-
-function parseImages(input: unknown): UiImageInput[] | undefined {
-  if (input === undefined) return undefined;
-  if (!Array.isArray(input)) return undefined;
-  const images: UiImageInput[] = [];
-  for (const item of input) {
-    const image = asRecord(item);
-    const type = image ? readString(image.type) : undefined;
-    const data = image ? readString(image.data) : undefined;
-    const mimeType = image ? readString(image.mimeType) : undefined;
-    if (type !== "image" || !data || !mimeType) return undefined;
-    images.push({ type: "image", data, mimeType });
-  }
-  return images;
-}
-
-function isThinkingLevel(level: string | undefined): level is ThinkingLevel {
-  return (
-    level === "off" ||
-    level === "minimal" ||
-    level === "low" ||
-    level === "medium" ||
-    level === "high" ||
-    level === "xhigh"
-  );
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  return value as Record<string, unknown>;
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function readOptionalNumber(value: unknown): number | undefined {
-  if (value === undefined) return undefined;
-  return readNumber(value);
-}
-
-function withOptionalCorrelation<TMessage extends UiToHostMessagePayload>(
-  message: TMessage | undefined,
-  payload: Record<string, unknown>,
-): UiToHostMessage | undefined {
-  if (!message) return undefined;
-  return withCorrelation(message, payload);
+export function parseHostMessage(input: unknown): HostToUiMessage | undefined {
+  const parsed = HostToUiMessageSchema.safeParse(input);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function withCorrelation<TMessage extends UiToHostMessagePayload>(
   message: TMessage,
-  payload: Record<string, unknown>,
+  rawInput: unknown,
 ): UiToHostMessage {
-  const correlationId = readString(payload.correlationId);
+  const correlationId = readCorrelationId(rawInput);
   if (!correlationId) return message;
   return { ...message, correlationId };
+}
+
+function readCorrelationId(input: unknown): string | undefined {
+  const parsed = CorrelationCarrierSchema.safeParse(input);
+  return parsed.success ? parsed.data.correlationId : undefined;
 }

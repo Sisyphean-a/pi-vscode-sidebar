@@ -1,6 +1,6 @@
 import { resolveSidebarLocale } from "../../shared/sidebar-commands.ts";
 import { bindAppEventBindings } from "./app-event-bindings.ts";
-import { createAppDom } from "./app-dom.ts";
+import { createAppDom } from "./app-shell.tsx";
 import { createSidebarAppRuntime as buildSidebarAppRuntime } from "./app-runtime-builders.ts";
 import { syncComposerHeight } from "./composer.ts";
 import { createUiMessagePoster } from "./ui-message-poster.ts";

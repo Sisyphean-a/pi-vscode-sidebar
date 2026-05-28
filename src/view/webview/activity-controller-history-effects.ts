@@ -6,7 +6,7 @@ import {
   summarizeToolResultDetailSummary,
 } from "./activity-event-utils.ts";
 import type { ActivityControllerEffectPlan } from "./activity-controller-effects.ts";
-import { readString } from "./ui-text.ts";
+import { readString } from "./activity-event-zod.ts";
 
 export function planHistoryMessageEffects(
   message: Record<string, unknown>,

@@ -1,4 +1,4 @@
-import { asRecord, readString } from "./ui-text.ts";
+import { z } from "zod";
 
 interface CreatePromptReferenceEditorOptions {
   promptInput: HTMLTextAreaElement;
@@ -9,15 +9,23 @@ export interface PromptReferenceEditor {
   insert(payload: unknown): void;
 }
 
+const PromptReferencePayloadSchema = z
+  .object({
+    reference: z.string(),
+  })
+  .catchall(z.unknown());
+
 export function createPromptReferenceEditor(
   options: CreatePromptReferenceEditorOptions,
 ): PromptReferenceEditor {
   return {
     insert(payload) {
-      const data = asRecord(payload);
-      const reference = readString(data?.reference);
-      if (!reference) return;
-      insertTextAtSelection(options, buildPromptReferenceInsertion(options.promptInput, reference));
+      const parsed = PromptReferencePayloadSchema.safeParse(payload);
+      if (!parsed.success) return;
+      insertTextAtSelection(
+        options,
+        buildPromptReferenceInsertion(options.promptInput, parsed.data.reference),
+      );
       options.promptInput.focus();
     },
   };

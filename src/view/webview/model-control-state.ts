@@ -7,7 +7,6 @@ import {
   syncModelControlRpcState,
 } from "./model-control-effects.ts";
 import { formatModelValue, isThinkingLevel } from "./model-options.ts";
-import { readString } from "./ui-text.ts";
 
 export interface ModelControlState {
   availableModelsByValue: Map<string, AvailableModel>;
@@ -33,6 +32,11 @@ export interface QueryResultOutcome {
   note?: string;
 }
 
+export interface ModelControlQueryResultEvent {
+  command: string;
+  data?: unknown;
+}
+
 export function createModelControlState(): ModelControlState {
   return {
     availableModelsByValue: new Map<string, AvailableModel>(),
@@ -50,17 +54,16 @@ export function createModelControlState(): ModelControlState {
 
 export function handleQueryResult(
   state: ModelControlState,
-  event: Record<string, unknown>,
+  event: ModelControlQueryResultEvent,
 ): QueryResultOutcome {
-  const command = readString(event.command);
-  if (command === "get_available_models") {
+  if (event.command === "get_available_models") {
     applyAvailableModelsQueryResult(state, event.data);
     return { consumed: true };
   }
-  if (command === "set_thinking_level") {
+  if (event.command === "set_thinking_level") {
     return { consumed: true, note: applyThinkingLevelCommandResult(state) };
   }
-  if (command === "set_model") {
+  if (event.command === "set_model") {
     return { consumed: true, note: applyModelCommandResult(state) };
   }
   return { consumed: false };

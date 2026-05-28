@@ -25,7 +25,9 @@ describe("bootstrap runtime", () => {
     const output = { appendLine: vi.fn(), dispose: vi.fn() };
     const publish = vi.fn();
     const vscode = await import("vscode");
-    (vscode.window.createOutputChannel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(output);
+    (vscode.window.createOutputChannel as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
+      output,
+    );
 
     const { setupTraceLogging } = await import("../../../src/bootstrap/runtime.ts");
 

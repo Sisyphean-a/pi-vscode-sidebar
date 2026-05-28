@@ -1,5 +1,6 @@
+import { effect, signal } from "@preact/signals";
+import { h, render } from "preact";
 import type { UiPendingImageAttachment } from "../protocol.ts";
-import { syncImageAttachmentUi } from "./image-attachments-dom.ts";
 import {
   handleImageAttachmentPaste,
   type StorePastedImagePayload,
@@ -22,7 +23,7 @@ interface ImageAttachmentControllerOptions {
 }
 
 export interface ImageAttachmentController {
-  applyAdded(data: { attachments?: UiPendingImageAttachment[] }): void;
+  applyAdded(data: { attachments: UiPendingImageAttachment[] }): void;
   clear(): void;
   getPending(): UiPendingImageAttachment[];
   handlePaste(event: ClipboardEvent | Event): Promise<void>;
@@ -34,49 +35,55 @@ export interface ImageAttachmentController {
 export function createImageAttachmentController(
   options: ImageAttachmentControllerOptions,
 ): ImageAttachmentController {
-  let state = createImageAttachmentState();
-  const rerender = () => {
-    render(options, state, (nextState) => {
-      state = nextState;
-      rerender();
-    });
-  };
+  const stateSignal = signal(createImageAttachmentState());
+
+  effect(() => {
+    const state = stateSignal.value;
+    syncImageAttachmentUi(
+      {
+        button: options.button,
+        list: options.list,
+        onRemoveAttachment(id) {
+          stateSignal.value = removeImageAttachment(stateSignal.value, id);
+        },
+      },
+      {
+        pending: state.pending,
+        supported: state.supported,
+      },
+    );
+  });
 
   options.button.addEventListener("click", () => {
-    handlePickClick(options, state);
+    handlePickClick(options, stateSignal.value);
   });
-  rerender();
 
   return {
     applyAdded(data) {
-      const attachments = Array.isArray(data.attachments) ? data.attachments : [];
-      state = addImageAttachments(state, attachments);
-      rerender();
+      stateSignal.value = addImageAttachments(stateSignal.value, data.attachments);
     },
     clear() {
-      state = clearImageAttachments(state);
-      rerender();
+      stateSignal.value = clearImageAttachments(stateSignal.value);
     },
     getPending() {
-      return [...state.pending];
+      return [...stateSignal.value.pending];
     },
     async handlePaste(event) {
       await handleImageAttachmentPaste({
         event,
         onStorePastedImage: options.onStorePastedImage,
         onUnsupportedInput: options.onUnsupportedInput,
-        supported: state.supported,
+        supported: stateSignal.value.supported,
       });
     },
     hasPending() {
-      return state.pending.length > 0;
+      return stateSignal.value.pending.length > 0;
     },
     setSupported(supported) {
-      state = setImageAttachmentSupported(state, supported);
-      rerender();
+      stateSignal.value = setImageAttachmentSupported(stateSignal.value, supported);
     },
     supportsInput() {
-      return state.supported;
+      return stateSignal.value.supported;
     },
   };
 }
@@ -92,22 +99,79 @@ function handlePickClick(
   options.onRequestPick();
 }
 
-function render(
-  options: ImageAttachmentControllerOptions,
-  state: ImageAttachmentState,
-  onRemoveAttachment: (nextState: ImageAttachmentState) => void,
+interface ImageAttachmentDomOptions {
+  button: HTMLButtonElement;
+  list: HTMLElement;
+  onRemoveAttachment(id: string): void;
+}
+
+interface ImageAttachmentDomState {
+  pending: UiPendingImageAttachment[];
+  supported: boolean;
+}
+
+function syncImageAttachmentUi(
+  options: ImageAttachmentDomOptions,
+  state: ImageAttachmentDomState,
 ): void {
-  syncImageAttachmentUi(
-    {
-      button: options.button,
-      list: options.list,
-      onRemoveAttachment(id) {
-        onRemoveAttachment(removeImageAttachment(state, id));
-      },
-    },
-    {
+  options.button.disabled = !state.supported;
+  options.list.classList.toggle("hidden", state.pending.length === 0);
+  render(
+    h(ImageAttachmentCardList, {
+      onRemoveAttachment: options.onRemoveAttachment,
       pending: state.pending,
-      supported: state.supported,
-    },
+    }),
+    options.list,
+  );
+}
+
+interface ImageAttachmentCardListProps {
+  onRemoveAttachment(id: string): void;
+  pending: UiPendingImageAttachment[];
+}
+
+function ImageAttachmentCardList(props: ImageAttachmentCardListProps) {
+  return props.pending.map((attachment) =>
+    h(
+      "article",
+      {
+        class: "composer-image-attachment",
+        key: attachment.id,
+      },
+      h("img", {
+        alt: attachment.name,
+        class: "composer-image-preview",
+        src: attachment.previewUrl,
+      }),
+      h(
+        "button",
+        {
+          "aria-label": "移除图片",
+          class: "composer-image-remove",
+          "data-attachment-id": attachment.id,
+          onClick() {
+            props.onRemoveAttachment(attachment.id);
+          },
+          title: "移除图片",
+          type: "button",
+        },
+        h(
+          "svg",
+          {
+            "aria-hidden": "true",
+            fill: "none",
+            height: "10",
+            viewBox: "0 0 10 10",
+            width: "10",
+          },
+          h("path", {
+            d: "M2 2l6 6M8 2L2 8",
+            stroke: "currentColor",
+            strokeLinecap: "round",
+            strokeWidth: "1.6",
+          }),
+        ),
+      ),
+    ),
   );
 }

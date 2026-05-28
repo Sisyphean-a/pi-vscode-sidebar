@@ -21,6 +21,19 @@ describe("resolveConversationPageEvent", () => {
     });
   });
 
+  it("rejects get_messages query results when replace is not a boolean", () => {
+    expect(
+      resolveConversationPageEvent({
+        type: "query_result",
+        command: "get_messages",
+        replace: "yes",
+        data: {
+          messages: [{ role: "assistant", id: "m1" }],
+        },
+      }),
+    ).toBeUndefined();
+  });
+
   it("resolves get_commands query results and filters invalid commands", () => {
     expect(
       resolveConversationPageEvent({
@@ -47,6 +60,53 @@ describe("resolveConversationPageEvent", () => {
       commands: [
         {
           name: "resume",
+          source: "prompt",
+          sourceInfo: {
+            path: "a",
+            source: "prompt",
+            scope: "project",
+            origin: "repo",
+          },
+        },
+      ],
+    });
+  });
+
+  it("drops get_commands entries with invalid rpc source enum", () => {
+    expect(
+      resolveConversationPageEvent({
+        type: "query_result",
+        command: "get_commands",
+        data: {
+          commands: [
+            {
+              name: "valid",
+              source: "prompt",
+              sourceInfo: {
+                path: "a",
+                source: "prompt",
+                scope: "project",
+                origin: "repo",
+              },
+            },
+            {
+              name: "invalid",
+              source: "custom",
+              sourceInfo: {
+                path: "b",
+                source: "custom",
+                scope: "project",
+                origin: "repo",
+              },
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      kind: "availableCommandsQueryResult",
+      commands: [
+        {
+          name: "valid",
           source: "prompt",
           sourceInfo: {
             path: "a",

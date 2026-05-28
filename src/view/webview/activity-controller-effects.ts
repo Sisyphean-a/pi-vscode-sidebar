@@ -10,7 +10,7 @@ import {
   extractMessageText,
   extractThinkingText,
   readResponseId,
-} from "./activity-event-utils.ts";
+} from "./activity-event-readers.ts";
 import {
   appendFeedMessage,
   appendFinalizedGroup,
@@ -23,7 +23,7 @@ import {
   appendToolCallUpdateEffects,
   appendToolResultMessageEndEffects,
 } from "./activity-controller-tool-effects.ts";
-import { asRecord, readString } from "./ui-text.ts";
+import { readRecord, readString } from "./activity-event-zod.ts";
 
 export type {
   ActivityControllerEffect,
@@ -36,7 +36,7 @@ export function planMessageEndEffects(
   event: Record<string, unknown>,
 ): ActivityControllerEffectPlan {
   const plan = createEffectPlan();
-  const message = asRecord(event.message);
+  const message = readRecord(event.message);
   const role = readString(message?.role);
   if (role === "assistant") {
     appendFinalizedGroup(plan, resolveThinkingActivityGroup(readResponseId(event)));
@@ -63,7 +63,7 @@ export function planMessageUpdateEffects(
   event: Record<string, unknown>,
 ): ActivityControllerEffectPlan {
   const plan = createEffectPlan();
-  const assistantEvent = asRecord(event.assistantMessageEvent);
+  const assistantEvent = readRecord(event.assistantMessageEvent);
   const assistantEventType = readString(assistantEvent?.type);
   if (assistantEventType?.startsWith("toolcall_")) {
     appendFinalizedGroup(plan, resolveThinkingActivityGroup(readResponseId(event)));

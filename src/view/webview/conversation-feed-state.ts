@@ -114,7 +114,6 @@ function promoteEntryKey(
       state.entries.delete(fallbackKey);
       return { promotedFromKey: fallbackKey };
     }
-    return {};
   }
   return {};
 }

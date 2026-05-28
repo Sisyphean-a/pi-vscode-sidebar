@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { createExtensionUiRenderer } from "../../../src/view/webview/extension-ui.ts";
+import { createExtensionUiRenderer } from "../../../src/view/webview/extension-ui.tsx";
 
 describe("extension ui renderer", () => {
   it("treats notify as inline notice and reads notifyType level", () => {
@@ -82,15 +82,6 @@ function createHarness() {
 
   const render = createExtensionUiRenderer({
     panel,
-    escapeHtml(text) {
-      return text
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
-    },
-    expectElement,
     postResponse(requestId, payload) {
       responses.push({ requestId, payload });
     },

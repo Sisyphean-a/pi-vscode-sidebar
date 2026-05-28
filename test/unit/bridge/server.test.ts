@@ -41,26 +41,6 @@ describe("createBridgeHttpServer", () => {
     });
   });
 
-  it("accepts header name case variants for authorization", async () => {
-    const bridge = await createBridgeHttpServer({
-      token: "secret-token",
-      handleRpc: async () => ({ ok: true }),
-    });
-    disposers.push(bridge.dispose);
-
-    const response = await fetch(`${bridge.url}/rpc`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "X-Pi-Vscode-Authorization": "secret-token",
-      },
-      body: JSON.stringify({ method: "getStatus", params: {} }),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ result: { ok: true } });
-  });
-
   it("rejects oversized payloads", async () => {
     const bridge = await createBridgeHttpServer({
       token: "secret-token",

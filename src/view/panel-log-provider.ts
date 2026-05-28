@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type { LogBroadcaster } from "../host/log-broadcaster.ts";
+import { parseUiMessage } from "./protocol.ts";
 import { renderPanelLogWebviewHtml } from "./panel-log-webview-html.ts";
 
 export interface CreatePanelLogViewProviderOptions {
@@ -28,8 +29,8 @@ class PanelLogViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = renderPanelLogWebviewHtml(this.extensionUri, view.webview);
     view.webview.onDidReceiveMessage((payload: unknown) => {
-      const type = readMessageType(payload);
-      if (type !== "ui_ready") return;
+      const message = parseUiMessage(payload);
+      if (!message || message.type !== "ui_ready") return;
       this.isReady = true;
       this.syncSubscription(view);
     });
@@ -61,10 +62,4 @@ class PanelLogViewProvider implements vscode.WebviewViewProvider {
     this.unsubscribeLogs?.();
     this.unsubscribeLogs = undefined;
   }
-}
-
-function readMessageType(payload: unknown): string | undefined {
-  if (typeof payload !== "object" || payload === null) return undefined;
-  const type = (payload as { type?: unknown }).type;
-  return typeof type === "string" ? type : undefined;
 }

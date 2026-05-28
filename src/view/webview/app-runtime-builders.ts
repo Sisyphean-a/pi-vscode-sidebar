@@ -5,7 +5,7 @@ import type {
 import { resolveSidebarCommandId } from "../../shared/sidebar-commands.ts";
 import { createActivityController } from "./activity-controller.ts";
 import { createAppLifecycle, type AppLifecycle } from "./app-lifecycle.ts";
-import { type AppDom, expectAppElement } from "./app-dom.ts";
+import { type AppDom, expectAppElement } from "./app-shell.tsx";
 import { createCommandPalette, type CommandPalette } from "./command-palette.ts";
 import { createCommandUiController, type CommandUiController } from "./command-ui.ts";
 import { createComposerActions, type ComposerActions } from "./composer-actions.ts";

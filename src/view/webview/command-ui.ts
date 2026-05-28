@@ -1,11 +1,6 @@
 import type { CommandResult, CommandUiRequest } from "../protocol.ts";
+import { h, render } from "preact";
 import { resolveCommandUiKeyAction } from "./command-ui-actions.ts";
-import {
-  applyCommandUiResult,
-  clearCommandUiResult,
-  hideCommandUiPanel,
-  renderCommandUiItems,
-} from "./command-ui-dom.ts";
 import {
   clearCommandUiState,
   createCommandUiState,
@@ -48,7 +43,7 @@ export function createCommandUiController(options: CommandUiOptions): CommandUiC
   function renderItems(): void {
     const request = state.currentRequest;
     if (!request) {
-      options.list.replaceChildren();
+      clearCommandUiItems(options.list);
       return;
     }
     renderCommandUiItems(options.list, request.items, state.selectedIndex, (index) => {
@@ -102,4 +97,73 @@ export function createCommandUiController(options: CommandUiOptions): CommandUiC
       options.focusComposer();
     },
   };
+}
+
+function applyCommandUiResult(resultElement: HTMLElement, result: CommandResult): void {
+  resultElement.textContent = result.message ?? "";
+  resultElement.dataset.status = result.status;
+  resultElement.classList.toggle("hidden", !result.message);
+}
+
+function clearCommandUiResult(resultElement: HTMLElement): void {
+  resultElement.textContent = "";
+  resultElement.classList.add("hidden");
+  delete resultElement.dataset.status;
+}
+
+function clearCommandUiItems(list: HTMLElement): void {
+  render(null, list);
+}
+
+function hideCommandUiPanel(panel: HTMLElement, list: HTMLElement): void {
+  panel.classList.add("hidden");
+  clearCommandUiItems(list);
+}
+
+function renderCommandUiItems(
+  list: HTMLElement,
+  items: ReadonlyArray<CommandUiRequest["items"][number]>,
+  selectedIndex: number,
+  onSelect: (index: number) => void,
+): void {
+  render(
+    h(CommandUiItemList, {
+      items,
+      onSelect,
+      selectedIndex,
+    }),
+    list,
+  );
+}
+
+interface CommandUiItemListProps {
+  items: ReadonlyArray<CommandUiRequest["items"][number]>;
+  onSelect(index: number): void;
+  selectedIndex: number;
+}
+
+function CommandUiItemList(props: CommandUiItemListProps) {
+  return props.items.map((item, index) => {
+    const className =
+      index === props.selectedIndex
+        ? item.active
+          ? "command-ui-item is-active is-selected"
+          : "command-ui-item is-selected"
+        : item.active
+          ? "command-ui-item is-active"
+          : "command-ui-item";
+    return h(
+      "button",
+      {
+        class: className,
+        "data-command-ui-item": item.id,
+        onClick() {
+          props.onSelect(index);
+        },
+        style: { "--command-depth": `${item.depth ?? 0}` } as Record<string, string>,
+        type: "button",
+      },
+      item.label,
+    );
+  });
 }

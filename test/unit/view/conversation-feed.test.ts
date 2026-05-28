@@ -16,14 +16,10 @@ describe("conversation feed", () => {
       container,
       onChange() {},
       renderAssistantMarkdown(text) {
-        const fragment = document.createDocumentFragment();
-        fragment.append(text);
-        return fragment;
+        return text;
       },
       renderPlainTextWithReferences(text) {
-        const fragment = document.createDocumentFragment();
-        fragment.append(text);
-        return fragment;
+        return text;
       },
     });
 

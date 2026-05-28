@@ -77,6 +77,17 @@ describe("controller command ui readers", () => {
         payload: { selectedId: "node-1" },
       },
     ]);
+
+    expect(() =>
+      readTreeCommandUiItems({
+        nodes: [{ entryId: "node-invalid" }],
+      }),
+    ).not.toThrow();
+    expect(
+      readTreeCommandUiItems({
+        nodes: [{ entryId: "node-invalid" }],
+      }),
+    ).toEqual([]);
   });
 
   it("reads command ui selections and slash command payloads", () => {
@@ -89,6 +100,7 @@ describe("controller command ui readers", () => {
       modelId: "gpt-5",
     });
     expect(readModelSelection({ provider: "openai" })).toBeUndefined();
+    expect(readModelSelection("invalid")).toBeUndefined();
 
     expect(
       readSlashCommands({

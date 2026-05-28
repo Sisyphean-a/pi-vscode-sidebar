@@ -1,5 +1,5 @@
+import { z } from "zod";
 import type { RpcSlashCommand } from "../../shared/rpc-types.ts";
-import { asRecord, readString } from "./ui-text.ts";
 
 type ToolExecutionEventType =
   | "tool_execution_start"
@@ -18,69 +18,115 @@ export type ConversationPageEvent =
       eventType: ToolExecutionEventType;
     };
 
-export function resolveConversationPageEvent(data: unknown): ConversationPageEvent | undefined {
-  const event = asRecord(data);
-  const type = readString(event?.type);
-  if (!event || !type) return undefined;
+const TOOL_EXECUTION_EVENT_TYPES = [
+  "tool_execution_start",
+  "tool_execution_update",
+  "tool_execution_end",
+] as const;
+const HANDLED_NOOP_EVENT_TYPES = new Set(["rpc_command_sent", "rpc_response", "message_start"]);
+const RecordSchema = z.object({}).catchall(z.unknown());
+const EventSchema = RecordSchema.extend({ type: z.string() });
+const QueryResultEventSchema = EventSchema.extend({
+  type: z.literal("query_result"),
+  command: z.string(),
+});
+const ToolExecutionEventTypeSchema = z.enum(TOOL_EXECUTION_EVENT_TYPES);
+const RpcSourceInfoSchema = z.object({
+  path: z.string(),
+  source: z.string(),
+  scope: z.enum(["user", "project", "temporary"]),
+  origin: z.string(),
+  baseDir: z.string().optional(),
+});
+const RpcSlashCommandSchema: z.ZodType<RpcSlashCommand> = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  source: z.enum(["extension", "prompt", "skill"]),
+  sourceInfo: RpcSourceInfoSchema,
+});
+const CommandListSchema = z
+  .object({ commands: z.array(z.unknown()) })
+  .catchall(z.unknown())
+  .transform(({ commands }) => ({
+    commands: commands
+      .map((entry) => RpcSlashCommandSchema.safeParse(entry))
+      .filter((entry): entry is { success: true; data: RpcSlashCommand } => entry.success)
+      .map((entry) => entry.data),
+  }));
+const DirectMessageArraySchema = z.array(z.unknown());
+const MessageListPayloadSchema = z.object({ messages: z.array(z.unknown()) }).catchall(z.unknown());
+const NestedMessageListPayloadSchema = z
+  .object({
+    data: MessageListPayloadSchema,
+  })
+  .catchall(z.unknown());
+const MessagePayloadSchema = z.union([
+  DirectMessageArraySchema,
+  MessageListPayloadSchema,
+  NestedMessageListPayloadSchema,
+]);
+const GetCommandsQueryResultSchema = QueryResultEventSchema.extend({
+  command: z.literal("get_commands"),
+  data: CommandListSchema,
+});
+const GetMessagesQueryResultSchema = QueryResultEventSchema.extend({
+  command: z.literal("get_messages"),
+  replace: z.boolean(),
+  data: MessagePayloadSchema,
+});
+const QueryResultVariantSchema = z.union([
+  GetCommandsQueryResultSchema,
+  GetMessagesQueryResultSchema,
+]);
 
-  if (type === "query_result") {
-    return resolveQueryResultEvent(event);
+export function resolveConversationPageEvent(data: unknown): ConversationPageEvent | undefined {
+  const parsed = EventSchema.safeParse(data);
+  if (!parsed.success) return undefined;
+
+  const event = parsed.data;
+  if (event.type === "query_result") {
+    const queryResult = QueryResultEventSchema.safeParse(event);
+    if (!queryResult.success) return undefined;
+    return resolveQueryResultEvent(queryResult.data);
   }
-  if (type === "rpc_command_sent" || type === "rpc_response" || type === "message_start") {
+  if (HANDLED_NOOP_EVENT_TYPES.has(event.type)) {
     return { kind: "handledNoop" };
   }
-  if (type === "message_update") {
+  if (event.type === "message_update") {
     return { kind: "activityMessageUpdate", event };
   }
-  if (type === "message_end") {
+  if (event.type === "message_end") {
     return { kind: "activityMessageEnd", event };
   }
-  if (isToolExecutionEvent(type)) {
-    return { kind: "toolExecutionEvent", event, eventType: type };
+  if (isToolExecutionEvent(event.type)) {
+    return { kind: "toolExecutionEvent", event, eventType: event.type };
   }
   return undefined;
 }
 
-function extractMessageArray(payload: unknown): unknown[] | undefined {
-  if (Array.isArray(payload)) return payload;
-  const record = asRecord(payload);
-  if (!record) return undefined;
-  if (Array.isArray(record.messages)) return record.messages;
-  const nestedData = asRecord(record.data);
-  if (Array.isArray(nestedData?.messages)) return nestedData.messages;
-  return undefined;
-}
-
-function extractSlashCommands(payload: unknown): RpcSlashCommand[] | undefined {
-  const record = asRecord(payload);
-  if (!record || !Array.isArray(record.commands)) return undefined;
-  return record.commands.filter((command): command is RpcSlashCommand => {
-    const item = asRecord(command);
-    return !!item && typeof item.name === "string" && typeof item.source === "string";
-  });
+function extractMessageArray(payload: z.infer<typeof MessagePayloadSchema>): unknown[] {
+  const directPayload = DirectMessageArraySchema.safeParse(payload);
+  if (directPayload.success) return directPayload.data;
+  const messageListPayload = MessageListPayloadSchema.safeParse(payload);
+  if (messageListPayload.success) return messageListPayload.data.messages;
+  return NestedMessageListPayloadSchema.parse(payload).data.messages;
 }
 
 function isToolExecutionEvent(type: string): type is ToolExecutionEventType {
-  return (
-    type === "tool_execution_start" ||
-    type === "tool_execution_update" ||
-    type === "tool_execution_end"
-  );
+  return ToolExecutionEventTypeSchema.safeParse(type).success;
 }
 
 function resolveQueryResultEvent(
-  event: Record<string, unknown>,
+  event: z.infer<typeof QueryResultEventSchema>,
 ): ConversationPageEvent | undefined {
-  const command = readString(event.command);
-  if (command === "get_commands") {
-    const commands = extractSlashCommands(event.data);
-    if (!commands) return undefined;
-    return { kind: "availableCommandsQueryResult", commands };
+  const parsed = QueryResultVariantSchema.safeParse(event);
+  if (!parsed.success) return undefined;
+  if (parsed.data.command === "get_commands") {
+    return { kind: "availableCommandsQueryResult", commands: parsed.data.data.commands };
   }
-  if (command !== "get_messages") return undefined;
   return {
     kind: "messageReplayQueryResult",
-    messages: extractMessageArray(event.data),
-    replace: event.replace === true,
+    messages: extractMessageArray(parsed.data.data),
+    replace: parsed.data.replace,
   };
 }

@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { resolveExtensionUiRequest } from "../../../src/view/webview/extension-ui-state.ts";
 
 describe("extension ui state", () => {
+  it("returns undefined for invalid envelope and missing required ids", () => {
+    expect(resolveExtensionUiRequest(null)).toBeUndefined();
+    expect(
+      resolveExtensionUiRequest({
+        method: "select",
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveExtensionUiRequest({
+        id: "req-confirm",
+        method: "confirm",
+      }),
+    ).toEqual({
+      type: "confirm",
+      requestId: "req-confirm",
+      titleText: "请确认",
+      message: "",
+    });
+  });
+
   it("normalizes notify payload into the final inline notice text", () => {
     expect(
       resolveExtensionUiRequest({
@@ -76,5 +96,13 @@ describe("extension ui state", () => {
       type: "set_editor_text",
       text: "const a = 1;",
     });
+  });
+
+  it("returns hide for unknown methods", () => {
+    expect(
+      resolveExtensionUiRequest({
+        method: "something_else",
+      }),
+    ).toEqual({ type: "hide" });
   });
 });

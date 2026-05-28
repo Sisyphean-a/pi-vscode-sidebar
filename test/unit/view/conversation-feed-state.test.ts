@@ -7,6 +7,33 @@ import {
 } from "../../../src/view/webview/conversation-feed-state.ts";
 
 describe("conversation feed state", () => {
+  it("promotes from the first existing fallback key", () => {
+    const state = createConversationFeedState();
+
+    applyMessageText(state, {
+      key: "assistant:active",
+      role: "assistant",
+      nextText: "首条回复",
+      mode: "replace",
+    });
+
+    expect(
+      applyMessageText(state, {
+        key: "assistant:resp-2",
+        role: "assistant",
+        nextText: "首条回复\n补充",
+        mode: "merge",
+        fallbackKeys: ["assistant:missing", "assistant:active"],
+      }),
+    ).toEqual({
+      changed: true,
+      key: "assistant:resp-2",
+      promotedFromKey: "assistant:active",
+      role: "assistant",
+      text: "首条回复\n补充",
+    });
+  });
+
   it("promotes fallback keys and strips leading thinking blocks for assistant text", () => {
     const state = createConversationFeedState();
 

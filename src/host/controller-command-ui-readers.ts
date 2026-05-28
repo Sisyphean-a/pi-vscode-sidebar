@@ -1,39 +1,34 @@
+import { z } from "zod";
 import type { CommandUiItem } from "../view/protocol.ts";
 import type { RpcSlashCommand, RpcSessionTreeNode } from "../shared/rpc-types.ts";
 
 export function readSelectedCommandUiId(payload: unknown): string | undefined {
-  if (typeof payload === "string" && payload) return payload;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
-  const selectedId = (payload as { selectedId?: unknown }).selectedId;
-  return typeof selectedId === "string" && selectedId ? selectedId : undefined;
+  const direct = NonEmptyStringSchema.safeParse(payload);
+  if (direct.success) return direct.data;
+  const objectPayload = SelectedIdPayloadSchema.safeParse(payload);
+  if (!objectPayload.success) return undefined;
+  return objectPayload.data.selectedId;
 }
 
 export function readModelSelection(
   payload: unknown,
 ): { provider: string; modelId: string } | undefined {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
-  const provider = (payload as { provider?: unknown }).provider;
-  const modelId = (payload as { modelId?: unknown }).modelId;
-  if (typeof provider !== "string" || !provider) return undefined;
-  if (typeof modelId !== "string" || !modelId) return undefined;
-  return { provider, modelId };
+  const parsed = ModelSelectionPayloadSchema.safeParse(payload);
+  if (!parsed.success) return undefined;
+  return parsed.data;
 }
 
 export function readModelCommandUiItems(data: unknown): CommandUiItem[] {
-  const models = Array.isArray((data as { models?: unknown[] } | undefined)?.models)
-    ? (data as { models: unknown[] }).models
-    : [];
-  return models.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-    const provider = (entry as { provider?: unknown }).provider;
-    const id = (entry as { id?: unknown }).id;
-    if (typeof provider !== "string" || !provider) return [];
-    if (typeof id !== "string" || !id) return [];
-    const name = (entry as { name?: unknown }).name;
+  const modelPayload = ModelListPayloadSchema.safeParse(data);
+  if (!modelPayload.success) return [];
+  return modelPayload.data.models.flatMap((entry) => {
+    const parsedModel = ModelEntrySchema.safeParse(entry);
+    if (!parsedModel.success) return [];
+    const { provider, id, name } = parsedModel.data;
     return [
       {
         id: `${provider}/${id}`,
-        label: typeof name === "string" && name ? name : id,
+        label: name ?? id,
         detail: provider,
         payload: { provider, modelId: id },
       },
@@ -42,15 +37,12 @@ export function readModelCommandUiItems(data: unknown): CommandUiItem[] {
 }
 
 export function readForkCommandUiItems(data: unknown): CommandUiItem[] {
-  const messages = Array.isArray((data as { messages?: unknown[] } | undefined)?.messages)
-    ? (data as { messages: unknown[] }).messages
-    : [];
-  return messages.flatMap((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-    const entryId = (entry as { entryId?: unknown }).entryId;
-    const text = (entry as { text?: unknown }).text;
-    if (typeof entryId !== "string" || !entryId) return [];
-    if (typeof text !== "string" || !text) return [];
+  const messagePayload = ForkMessagePayloadSchema.safeParse(data);
+  if (!messagePayload.success) return [];
+  return messagePayload.data.messages.flatMap((entry) => {
+    const parsedEntry = ForkMessageEntrySchema.safeParse(entry);
+    if (!parsedEntry.success) return [];
+    const { entryId, text } = parsedEntry.data;
     return [
       {
         id: entryId,
@@ -62,42 +54,45 @@ export function readForkCommandUiItems(data: unknown): CommandUiItem[] {
 }
 
 export function readTreeCommandUiItems(data: unknown): CommandUiItem[] {
-  const nodes = Array.isArray((data as { nodes?: RpcSessionTreeNode[] } | undefined)?.nodes)
-    ? (data as { nodes: RpcSessionTreeNode[] }).nodes
-    : [];
-  return nodes.map((node) => ({
-    id: node.entryId,
-    label: node.label?.trim() || truncateLabel(node.previewText),
-    detail: node.label?.trim() ? truncateLabel(node.previewText) : undefined,
-    depth: node.depth,
-    active: node.isActive,
-    payload: { selectedId: node.entryId },
-  }));
-}
-
-export function readSlashCommands(data: unknown): RpcSlashCommand[] {
-  const commands = (data as { commands?: unknown } | undefined)?.commands;
-  if (!Array.isArray(commands)) return [];
-  return commands.filter((command): command is RpcSlashCommand => {
-    if (!command || typeof command !== "object" || Array.isArray(command)) return false;
-    const record = command as Record<string, unknown>;
-    return (
-      typeof record.name === "string" &&
-      typeof record.source === "string" &&
-      typeof record.sourceInfo === "object" &&
-      record.sourceInfo !== null
-    );
+  const treePayload = TreeNodePayloadSchema.safeParse(data);
+  if (!treePayload.success) return [];
+  return treePayload.data.nodes.flatMap((entry) => {
+    const parsedNode = SessionTreeNodeSchema.safeParse(entry);
+    if (!parsedNode.success) return [];
+    const node = parsedNode.data;
+    return [
+      {
+        id: node.entryId,
+        label: node.label?.trim() || truncateLabel(node.previewText),
+        detail: node.label?.trim() ? truncateLabel(node.previewText) : undefined,
+        depth: node.depth,
+        active: node.isActive,
+        payload: { selectedId: node.entryId },
+      },
+    ];
   });
 }
 
+export function readSlashCommands(data: unknown): RpcSlashCommand[] {
+  const commandPayload = SlashCommandPayloadSchema.safeParse(data);
+  if (!commandPayload.success) return [];
+  const parsedCommands = commandPayload.data.commands.flatMap((entry) => {
+    const parsedCommand = RpcSlashCommandSchema.safeParse(entry);
+    return parsedCommand.success ? [parsedCommand.data] : [];
+  });
+  return parsedCommands as unknown as RpcSlashCommand[];
+}
+
 export function readLastAssistantText(data: unknown): string | undefined {
-  const text = (data as { text?: unknown } | undefined)?.text;
-  return typeof text === "string" && text ? text : undefined;
+  const parsed = LastAssistantTextPayloadSchema.safeParse(data);
+  if (!parsed.success) return undefined;
+  return parsed.data.text;
 }
 
 export function readExportPath(data: unknown): string | undefined {
-  const path = (data as { path?: unknown } | undefined)?.path;
-  return typeof path === "string" && path ? path : undefined;
+  const parsed = ExportPathPayloadSchema.safeParse(data);
+  if (!parsed.success) return undefined;
+  return parsed.data.path;
 }
 
 function truncateLabel(value: string): string {
@@ -105,3 +100,40 @@ function truncateLabel(value: string): string {
   if (trimmed.length <= 72) return trimmed;
   return `${trimmed.slice(0, 72)}...`;
 }
+
+const NonEmptyStringSchema = z.string().min(1);
+const SelectedIdPayloadSchema = z.object({ selectedId: NonEmptyStringSchema });
+const ModelSelectionPayloadSchema = z.object({
+  provider: NonEmptyStringSchema,
+  modelId: NonEmptyStringSchema,
+});
+const ModelEntrySchema = z.object({
+  provider: NonEmptyStringSchema,
+  id: NonEmptyStringSchema,
+  name: NonEmptyStringSchema.optional(),
+});
+const ModelListPayloadSchema = z.object({ models: z.array(z.unknown()) });
+const ForkMessageEntrySchema = z.object({
+  entryId: NonEmptyStringSchema,
+  text: NonEmptyStringSchema,
+});
+const ForkMessagePayloadSchema = z.object({ messages: z.array(z.unknown()) });
+const SessionTreeNodeSchema: z.ZodType<RpcSessionTreeNode> = z.object({
+  entryId: NonEmptyStringSchema,
+  parentEntryId: z.string().optional(),
+  label: z.string().optional(),
+  previewText: z.string(),
+  depth: z.number(),
+  isActive: z.boolean(),
+  hasChildren: z.boolean().optional().default(false),
+});
+const TreeNodePayloadSchema = z.object({ nodes: z.array(z.unknown()) });
+const RpcSlashCommandSchema = z.object({
+  name: NonEmptyStringSchema,
+  description: z.string().optional(),
+  source: z.enum(["extension", "prompt", "skill"]),
+  sourceInfo: z.object({}).catchall(z.unknown()),
+});
+const SlashCommandPayloadSchema = z.object({ commands: z.array(z.unknown()) });
+const LastAssistantTextPayloadSchema = z.object({ text: NonEmptyStringSchema });
+const ExportPathPayloadSchema = z.object({ path: NonEmptyStringSchema });

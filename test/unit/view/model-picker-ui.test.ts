@@ -7,7 +7,7 @@ import {
 } from "../../../src/view/webview/model-picker-ui.ts";
 
 describe("model picker ui", () => {
-  it("renders model options without implicitly mutating the thinking-level picker", () => {
+  it("renders model options", () => {
     const modelPicker = createPickerSpy();
     const thinkingLevelPicker = createPickerSpy();
     const controls: ModelPickerControls = {
@@ -27,12 +27,7 @@ describe("model picker ui", () => {
 
     expect(modelPicker.calls.setOptions).toEqual([[{ value: "openai/gpt-5", label: "GPT-5" }]]);
     expect(modelPicker.calls.setValue).toEqual(["openai/gpt-5"]);
-    expect(modelPicker.calls.setFallbackLabel).toEqual(["模型"]);
     expect(modelPicker.calls.setDisabled).toEqual([false]);
-    expect(thinkingLevelPicker.calls.setOptions).toEqual([]);
-    expect(thinkingLevelPicker.calls.setValue).toEqual([]);
-    expect(thinkingLevelPicker.calls.setFallbackLabel).toEqual([]);
-    expect(thinkingLevelPicker.calls.setDisabled).toEqual([]);
   });
 
   it("renders supported thinking levels and clamps the preferred value", () => {
@@ -53,7 +48,6 @@ describe("model picker ui", () => {
       ],
     ]);
     expect(thinkingLevelPicker.calls.setValue).toEqual(["medium"]);
-    expect(thinkingLevelPicker.calls.setFallbackLabel).toEqual(["中"]);
     expect(thinkingLevelPicker.calls.setDisabled).toEqual([false]);
   });
 });

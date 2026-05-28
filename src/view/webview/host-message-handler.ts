@@ -1,10 +1,10 @@
+import { z } from "zod";
 import type { CommandPalette } from "./command-palette.ts";
 import type { CommandUiController } from "./command-ui.ts";
 import type { ConversationPageFlow } from "./conversation-page-flow.ts";
 import type { ImageAttachmentController } from "./image-attachments.ts";
 import type { ModelControls } from "./model-controls.ts";
 import type { PromptReferenceEditor } from "./prompt-reference-editor.ts";
-import { asRecord, readString } from "./ui-text.ts";
 import type { HostToUiMessage } from "../protocol.ts";
 
 interface CreateHostMessageHandlerOptions {
@@ -20,6 +20,19 @@ interface CreateHostMessageHandlerOptions {
 export interface HostMessageHandler {
   handle(message: HostToUiMessage): void;
 }
+
+const HostEventSchema = z.object({ type: z.string() }).catchall(z.unknown());
+const ThinkingLevelChangedEventSchema = z
+  .object({ type: z.literal("thinking_level_changed"), level: z.string() })
+  .catchall(z.unknown());
+const QueryResultEventSchema = z
+  .object({ type: z.literal("query_result"), command: z.string() })
+  .catchall(z.unknown());
+const HostStatePayloadSchema = z
+  .object({
+    rpc: z.object({}).catchall(z.unknown()).optional(),
+  })
+  .catchall(z.unknown());
 
 export function createHostMessageHandler(
   options: CreateHostMessageHandlerOptions,
@@ -45,7 +58,7 @@ export function createHostMessageHandler(
         return;
       }
       if (message.type === "state") {
-        applyStateMessage(message.data as Record<string, unknown>);
+        applyStateMessage(message.data);
         return;
       }
       if (message.type === "command_ui_request") {
@@ -58,27 +71,36 @@ export function createHostMessageHandler(
         return;
       }
       if (message.type === "extension_ui_request") {
-        options.renderExtensionUiRequest(message.data as Record<string, unknown>);
+        options.renderExtensionUiRequest(message.data);
         options.conversationPage.syncRecentSessionsVisibility();
       }
     },
   };
 
   function applyHostEvent(data: unknown): void {
-    const event = asRecord(data);
-    const type = readString(event?.type);
-    if (!event || !type) return;
-    if (type === "thinking_level_changed") {
-      options.modelControls.syncRpcState({ thinkingLevel: event.level });
+    const parsedEvent = HostEventSchema.safeParse(data);
+    if (!parsedEvent.success) return;
+    if (parsedEvent.data.type === "thinking_level_changed") {
+      const thinkingLevelChanged = ThinkingLevelChangedEventSchema.safeParse(parsedEvent.data);
+      if (!thinkingLevelChanged.success) return;
+      options.modelControls.syncRpcState({ thinkingLevel: thinkingLevelChanged.data.level });
       return;
     }
-    if (options.modelControls.handleQueryResult(event)) return;
-    options.conversationPage.applyEvent(event);
+    if (parsedEvent.data.type === "query_result") {
+      const queryResult = QueryResultEventSchema.safeParse(parsedEvent.data);
+      if (!queryResult.success) return;
+      if (options.modelControls.handleQueryResult(queryResult.data)) return;
+      options.conversationPage.applyEvent(queryResult.data);
+      return;
+    }
+    options.conversationPage.applyEvent(parsedEvent.data);
   }
 
-  function applyStateMessage(data: Record<string, unknown>): void {
-    options.modelControls.syncRpcState(asRecord(data.rpc));
-    options.conversationPage.applyState(data);
+  function applyStateMessage(data: unknown): void {
+    const parsedState = HostStatePayloadSchema.safeParse(data);
+    if (!parsedState.success) return;
+    options.modelControls.syncRpcState(parsedState.data.rpc);
+    options.conversationPage.applyState(parsedState.data);
     options.modelControls.requestAvailableModels();
   }
 }

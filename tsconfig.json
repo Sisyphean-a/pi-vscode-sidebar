@@ -5,6 +5,8 @@
     "moduleResolution": "nodenext",
     "moduleDetection": "force",
     "lib": ["ES2024", "DOM"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "strict": true,
     "allowJs": false,
     "resolveJsonModule": true,

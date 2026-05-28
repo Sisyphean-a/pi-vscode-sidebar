@@ -22,7 +22,7 @@ export default defineConfig([
     },
   },
   {
-    input: "src/view/webview/panel-log-app.ts",
+    input: "src/view/webview/panel-log-app.tsx",
     platform: "browser",
     output: {
       file: "dist/webview/panel-log-app.js",

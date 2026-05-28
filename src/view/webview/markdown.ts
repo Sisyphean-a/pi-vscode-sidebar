@@ -1,65 +1,68 @@
+import { h, type ComponentChildren } from "preact";
 import { type MarkdownBlock, parseMarkdownBlocks } from "./markdown-blocks.ts";
 import { renderInlineMarkdownToHtml, renderReferenceAwareText } from "./markdown-inline.ts";
 
-export function renderAssistantMarkdown(text: string): DocumentFragment {
-  const fragment = document.createDocumentFragment();
-  const blocks = parseMarkdownBlocks(text);
-  for (const block of blocks) {
-    fragment.append(renderMarkdownBlock(block));
-  }
-  return fragment;
+export function renderAssistantMarkdown(text: string): ComponentChildren {
+  return parseMarkdownBlocks(text).map((block, index) =>
+    h(MarkdownBlockNode, { block, key: `markdown-block:${index}` }),
+  );
 }
 
-export function renderPlainTextWithReferences(text: string): DocumentFragment {
-  const template = document.createElement("template");
-  template.innerHTML = renderReferenceAwareText(text).replaceAll("\n", "<br>");
-  return template.content.cloneNode(true) as DocumentFragment;
-}
-
-function createCodeBlock(code: string): HTMLElement {
-  const wrapper = document.createElement("div");
-  wrapper.className = "code-block";
-
-  const toolbar = document.createElement("div");
-  toolbar.className = "code-block-toolbar";
-
-  const copyButton = document.createElement("button");
-  copyButton.type = "button";
-  copyButton.className = "code-copy-button";
-  copyButton.textContent = "复制";
-  copyButton.addEventListener("click", () => {
-    void navigator.clipboard?.writeText(code);
+export function renderPlainTextWithReferences(text: string): ComponentChildren {
+  return h("span", {
+    dangerouslySetInnerHTML: {
+      __html: renderReferenceAwareText(text).replaceAll("\n", "<br>"),
+    },
   });
-  toolbar.append(copyButton);
-
-  const pre = document.createElement("pre");
-  const codeElement = document.createElement("code");
-  codeElement.textContent = code;
-  pre.append(codeElement);
-  wrapper.append(toolbar, pre);
-  return wrapper;
 }
 
-function renderMarkdownBlock(block: MarkdownBlock): HTMLElement {
-  if (block.type === "hr") return document.createElement("hr");
+function createCodeBlock(code: string): ComponentChildren {
+  return h(
+    "div",
+    { class: "code-block" },
+    h(
+      "div",
+      { class: "code-block-toolbar" },
+      h(
+        "button",
+        {
+          type: "button",
+          class: "code-copy-button",
+          onClick() {
+            void navigator.clipboard?.writeText(code);
+          },
+        },
+        "复制",
+      ),
+    ),
+    h("pre", null, h("code", null, code)),
+  );
+}
+
+function MarkdownBlockNode(props: { block: MarkdownBlock }): ComponentChildren {
+  const block = props.block;
+  if (block.type === "hr") return h("hr", null);
   if (block.type === "heading") {
-    const heading = document.createElement(`h${block.level}`);
-    heading.textContent = block.text;
-    return heading;
+    const tag = `h${block.level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+    return h(tag, null, block.text);
   }
   if (block.type === "code") {
     return createCodeBlock(block.code);
   }
   if (block.type === "list") {
-    const list = document.createElement(block.ordered ? "ol" : "ul");
-    for (const item of block.items) {
-      const li = document.createElement("li");
-      li.innerHTML = renderInlineMarkdownToHtml(item);
-      list.append(li);
-    }
-    return list;
+    const listTag = block.ordered ? "ol" : "ul";
+    return h(
+      listTag,
+      null,
+      block.items.map((item, itemIndex) =>
+        h("li", {
+          key: `markdown-list-item:${itemIndex}`,
+          dangerouslySetInnerHTML: { __html: renderInlineMarkdownToHtml(item) },
+        }),
+      ),
+    );
   }
-  const paragraph = document.createElement("p");
-  paragraph.innerHTML = renderInlineMarkdownToHtml(block.text);
-  return paragraph;
+  return h("p", {
+    dangerouslySetInnerHTML: { __html: renderInlineMarkdownToHtml(block.text) },
+  });
 }

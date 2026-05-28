@@ -30,32 +30,30 @@ describe("panel log view provider", () => {
     let receivedHandler: ((payload: unknown) => void) | undefined;
     let disposeHandler: (() => void) | undefined;
 
-    provider.resolveWebviewView(
-      {
-        webview: {
-          options: {},
-          html: "",
-          asWebviewUri(uri: unknown) {
-            return (uri as { path?: string }).path as never;
-          },
-          onDidReceiveMessage(handler: (payload: unknown) => void) {
-            receivedHandler = handler;
-            return { dispose() {} };
-          },
-          async postMessage(message: unknown) {
-            postedMessages.push(message);
-            return true;
-          },
+    provider.resolveWebviewView({
+      webview: {
+        options: {},
+        html: "",
+        asWebviewUri(uri: unknown) {
+          return (uri as { path?: string }).path as never;
         },
-        visible: true,
-        onDidChangeVisibility() {
+        onDidReceiveMessage(handler: (payload: unknown) => void) {
+          receivedHandler = handler;
           return { dispose() {} };
         },
-        onDidDispose(handler: () => void) {
-          disposeHandler = handler;
+        async postMessage(message: unknown) {
+          postedMessages.push(message);
+          return true;
         },
-      } as never,
-    );
+      },
+      visible: true,
+      onDidChangeVisibility() {
+        return { dispose() {} };
+      },
+      onDidDispose(handler: () => void) {
+        disposeHandler = handler;
+      },
+    } as never);
 
     void receivedHandler?.({ type: "ui_ready" });
     broadcaster.publish('{"message":"before"}');

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { RecentSessionSummary } from "../../shared/recent-sessions.ts";
 import type { ActivityController } from "./activity-controller.ts";
 import {
@@ -7,7 +8,7 @@ import {
   type ConversationPageState,
 } from "./conversation-page-state.ts";
 import type { RecentSessionsPanel } from "./recent-sessions.ts";
-import { asRecord, readString } from "./ui-text.ts";
+import { readRecord } from "./activity-event-zod.ts";
 
 interface ApplyConversationPageStateMessageOptions {
   data: Record<string, unknown>;
@@ -27,20 +28,43 @@ interface ApplyConversationReplayQueryResultOptions {
   syncRecentSessionsVisibility(): void;
 }
 
+const RecentSessionSummarySchema: z.ZodType<RecentSessionSummary> = z.object({
+  sessionId: z.string(),
+  sessionPath: z.string(),
+  title: z.string(),
+  updatedAt: z.string(),
+});
+
+const ConversationPageStatePayloadSchema = z
+  .object({
+    view: z
+      .object({
+        phase: z.string().optional(),
+      })
+      .optional(),
+    rpc: z
+      .object({
+        sessionFile: z.string().optional(),
+      })
+      .optional(),
+    recentSessions: z.array(RecentSessionSummarySchema).optional(),
+  })
+  .catchall(z.unknown());
+
 export function applyConversationPageStateMessage(
   options: ApplyConversationPageStateMessageOptions,
 ): void {
-  const view = asRecord(options.data.view);
-  const rpc = asRecord(options.data.rpc);
+  const parsed = ConversationPageStatePayloadSchema.safeParse(options.data);
+  if (!parsed.success) return;
   applyViewState(options.state, {
-    phase: readString(view?.phase) ?? "idle",
-    sessionPath: readString(rpc?.sessionFile),
+    phase: parsed.data.view?.phase ?? "idle",
+    sessionPath: parsed.data.rpc?.sessionFile,
   });
   options.onStreamingPhaseChange(options.state.isStreamingPhase);
   options.updateScrollToBottomButton();
-  if (!Array.isArray(options.data.recentSessions)) return;
+  if (!parsed.data.recentSessions) return;
   options.recentSessionsPanel.update(
-    options.data.recentSessions as RecentSessionSummary[],
+    parsed.data.recentSessions,
     readCurrentSessionPath(options.state),
   );
   options.syncRecentSessionsVisibility();
@@ -66,7 +90,7 @@ export function applyConversationReplayQueryResult(
     options.resetConversationView();
   }
   for (let index = 0; index < options.messages.length; index += 1) {
-    const message = asRecord(options.messages[index]);
+    const message = readRecord(options.messages[index]);
     if (!message) continue;
     options.activityController.hydrateHistoryMessage(message, index);
   }

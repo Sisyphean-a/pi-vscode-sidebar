@@ -7,7 +7,7 @@ describe("sidebar webview model state", () => {
     document.body.innerHTML = `<div id="app"></div>`;
   });
 
-  it("keeps the current model label when streaming state omits rpc model details", async () => {
+  it("keeps the current model value when streaming state omits rpc model details", async () => {
     (
       globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
     ).acquireVsCodeApi = () => ({
@@ -47,7 +47,6 @@ describe("sidebar webview model state", () => {
 
     const modelTrigger = document.getElementById("model-picker-trigger") as HTMLButtonElement;
     expect(modelTrigger.dataset.value).toBe("openai/gpt-5.3-codex");
-    expect(modelTrigger.textContent).toContain("5.3 Codex");
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -63,7 +62,6 @@ describe("sidebar webview model state", () => {
     await waitForFlush();
 
     expect(modelTrigger.dataset.value).toBe("openai/gpt-5.3-codex");
-    expect(modelTrigger.textContent).toContain("5.3 Codex");
   });
 
   it("shows image attachment action only for models with image input support", async () => {

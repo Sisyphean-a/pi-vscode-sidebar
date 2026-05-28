@@ -52,7 +52,9 @@ describe("registerPanelLogView", () => {
     getConfiguration.mockReturnValue({
       get: vi.fn(() => enabled),
     });
-    let changeHandler: ((event: { affectsConfiguration(section: string): boolean }) => void) | undefined;
+    let changeHandler:
+      | ((event: { affectsConfiguration(section: string): boolean }) => void)
+      | undefined;
     onDidChangeConfiguration.mockImplementation((handler) => {
       changeHandler = handler;
       return { dispose() {} };

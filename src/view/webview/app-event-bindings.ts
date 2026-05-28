@@ -1,4 +1,4 @@
-import type { HostToUiMessage } from "../protocol.ts";
+import { parseHostMessage, type HostToUiMessage } from "../protocol.ts";
 import type { CommandPalette } from "./command-palette.ts";
 import type { CommandUiController } from "./command-ui.ts";
 import type { ComposerActions } from "./composer-actions.ts";
@@ -71,9 +71,9 @@ export function bindAppEventBindings(options: AppEventBindingsOptions): void {
     options.onNewSession();
   });
 
-  window.addEventListener("message", (event: MessageEvent<HostToUiMessage>) => {
-    const message = event.data;
-    if (!message || typeof message !== "object" || !("type" in message)) return;
+  window.addEventListener("message", (event: MessageEvent<unknown>) => {
+    const message = parseHostMessage(event.data);
+    if (!message) return;
     options.handleHostMessage(message);
   });
 }

@@ -1,6 +1,6 @@
+import { z } from "zod";
 import { buildModelControlCatalog } from "./model-control-catalog.ts";
 import { formatModelValue, formatThinkingLevelLabel } from "./model-options.ts";
-import { asRecord, readString } from "./ui-text.ts";
 import type { ModelControlState } from "./model-control-state.ts";
 
 export function applyAvailableModelsQueryResult(state: ModelControlState, data: unknown): void {
@@ -38,29 +38,36 @@ export function syncModelControlRpcState(
   state: ModelControlState,
   rpc: Record<string, unknown> | undefined,
 ): void {
-  syncModelSelection(state, rpc);
-  syncThinkingLevel(state, rpc);
+  const parsedRpc = RpcStateSchema.safeParse(rpc);
+  if (!parsedRpc.success) return;
+  syncModelSelection(state, parsedRpc.data);
+  syncThinkingLevel(state, parsedRpc.data);
 }
 
-function syncModelSelection(
-  state: ModelControlState,
-  rpc: Record<string, unknown> | undefined,
-): void {
-  if (!rpc || !Object.hasOwn(rpc, "model")) return;
-  const modelRecord = asRecord(rpc.model);
-  const provider = readString(modelRecord?.provider);
-  const modelId = readString(modelRecord?.id);
-  state.currentModelValue = provider && modelId ? formatModelValue({ provider, id: modelId }) : "";
+const RpcStateSchema = z
+  .object({
+    model: z
+      .object({
+        provider: z.string(),
+        id: z.string(),
+      })
+      .optional(),
+    thinkingLevel: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
+function syncModelSelection(state: ModelControlState, rpc: z.infer<typeof RpcStateSchema>): void {
+  if (!Object.hasOwn(rpc, "model")) return;
+  state.currentModelValue = rpc.model
+    ? formatModelValue({ provider: rpc.model.provider, id: rpc.model.id })
+    : "";
   state.lastRpcModelValue = state.currentModelValue;
   if (state.pendingModelValue && state.currentModelValue !== state.pendingModelValue) return;
   state.pendingModelValue = "";
 }
 
-function syncThinkingLevel(
-  state: ModelControlState,
-  rpc: Record<string, unknown> | undefined,
-): void {
-  const nextLevel = readString(rpc?.thinkingLevel);
+function syncThinkingLevel(state: ModelControlState, rpc: z.infer<typeof RpcStateSchema>): void {
+  const nextLevel = rpc.thinkingLevel;
   if (!nextLevel) return;
   state.lastRpcThinkingLevel = nextLevel;
   if (state.pendingThinkingLevel && nextLevel !== state.pendingThinkingLevel) return;

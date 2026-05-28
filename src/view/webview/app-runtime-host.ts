@@ -1,9 +1,9 @@
-import { type AppDom, expectAppElement } from "./app-dom.ts";
+import type { AppDom } from "./app-shell.tsx";
 import type { CommandPalette } from "./command-palette.ts";
 import type { CommandUiController } from "./command-ui.ts";
 import { syncComposerHeight } from "./composer.ts";
 import type { ConversationPageFlow } from "./conversation-page-flow.ts";
-import { createExtensionUiRenderer } from "./extension-ui.ts";
+import { createExtensionUiRenderer } from "./extension-ui.tsx";
 import { createHostMessageHandler, type HostMessageHandler } from "./host-message-handler.ts";
 import type { ImageAttachmentController } from "./image-attachments.ts";
 import type { ModelControls } from "./model-controls.ts";
@@ -28,12 +28,6 @@ export function createSidebarHostBridge(
     syncComposerHeight,
   });
   const renderExtensionUiRequest = createExtensionUiRenderer({
-    escapeHtml(text) {
-      return text;
-    },
-    expectElement(id) {
-      return expectAppElement(options.dom.root, id);
-    },
     panel: options.dom.extensionUiPanel,
     postResponse(requestId, payload) {
       options.uiMessagePoster.post({ type: "respond_extension_ui", requestId, payload });

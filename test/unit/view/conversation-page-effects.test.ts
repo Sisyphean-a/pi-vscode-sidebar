@@ -83,4 +83,24 @@ describe("conversation page effects", () => {
     expect(hydrateHistoryMessage).toHaveBeenCalledWith({ role: "assistant", id: "msg-1" }, 0);
     expect(syncRecentSessionsVisibility).toHaveBeenCalledTimes(1);
   });
+
+  it("ignores invalid recent session payloads at boundary", () => {
+    const state = createConversationPageState();
+    const recentSessionsPanel = { update: vi.fn() };
+
+    applyConversationPageStateMessage({
+      data: {
+        view: { phase: "streaming" },
+        rpc: { sessionFile: "C:\\sessions\\session-1.jsonl" },
+        recentSessions: [{ sessionPath: "missing-required-fields" }],
+      },
+      onStreamingPhaseChange: vi.fn(),
+      recentSessionsPanel,
+      state,
+      syncRecentSessionsVisibility: vi.fn(),
+      updateScrollToBottomButton: vi.fn(),
+    });
+
+    expect(recentSessionsPanel.update).not.toHaveBeenCalled();
+  });
 });

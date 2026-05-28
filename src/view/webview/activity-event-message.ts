@@ -1,4 +1,25 @@
-import { asRecord, readString } from "./ui-text.ts";
+import { z } from "zod";
+import {
+  readAssistantEventPartial,
+  readMessageContentEntries,
+  readRecord,
+  readString,
+  readToolExecutionEventType,
+} from "./activity-event-zod.ts";
+
+const TextContentEntrySchema = z
+  .object({
+    type: z.literal("text"),
+    text: z.string().optional(),
+  })
+  .catchall(z.unknown());
+
+const ToolCallContentEntrySchema = z
+  .object({
+    type: z.literal("toolCall"),
+    name: z.string().optional(),
+  })
+  .catchall(z.unknown());
 
 export function mapStatusLabel(statusKey: string): string {
   if (statusKey === "idle") return "空闲";
@@ -10,7 +31,7 @@ export function mapStatusLabel(statusKey: string): string {
 }
 
 export function formatEventMessage(data: unknown): string {
-  const event = asRecord(data);
+  const event = readRecord(data);
   const type = readString(event?.type);
   if (!event || !type) return JSON.stringify(data);
 
@@ -18,13 +39,14 @@ export function formatEventMessage(data: unknown): string {
     return "查询结果已返回";
   }
 
-  if (type === "tool_execution_start") {
+  const toolExecutionType = readToolExecutionEventType(type);
+  if (toolExecutionType === "tool_execution_start") {
     return withToolName("工具开始执行", event);
   }
-  if (type === "tool_execution_update") {
+  if (toolExecutionType === "tool_execution_update") {
     return withToolName("工具执行中", event);
   }
-  if (type === "tool_execution_end") {
+  if (toolExecutionType === "tool_execution_end") {
     return withToolName("工具执行完成", event);
   }
   if (type === "turn_start") return "开始新一轮对话";
@@ -52,47 +74,44 @@ function withToolName(prefix: string, event: Record<string, unknown>): string {
   const name =
     readString(event.toolName) ??
     extractToolName(event.message) ??
-    extractToolName(asRecord(asRecord(event.assistantMessageEvent)?.partial));
+    extractToolName(readAssistantEventPartial(event));
   return name ? `${prefix}：${name}` : prefix;
 }
 
 function extractAssistantText(event: Record<string, unknown>): string | undefined {
   const textFromMessage = extractAssistantTextFromMessage(event.message);
   if (textFromMessage) return textFromMessage;
-  const partial = asRecord(asRecord(event.assistantMessageEvent)?.partial);
+  const partial = readAssistantEventPartial(event);
   return extractAssistantTextFromMessage(partial);
 }
 
 function extractAssistantTextFromMessage(message: unknown): string | undefined {
-  const record = asRecord(message);
+  const record = readRecord(message);
   if (!record) return undefined;
   if (readString(record.role) !== "assistant") return undefined;
-  const content = record.content;
-  if (!Array.isArray(content)) return undefined;
-  for (const item of content) {
-    const entry = asRecord(item);
-    if (!entry || readString(entry.type) !== "text") continue;
-    const text = readString(entry.text);
-    if (text) return text;
+  const contentEntries = readMessageContentEntries(record);
+  if (!contentEntries) return undefined;
+  for (const entry of contentEntries) {
+    const parsedEntry = TextContentEntrySchema.safeParse(entry);
+    if (!parsedEntry.success || !parsedEntry.data.text) continue;
+    return parsedEntry.data.text;
   }
   return undefined;
 }
 
 function extractToolName(message: unknown): string | undefined {
-  const record = asRecord(message);
-  if (!record) return undefined;
-  const content = record.content;
-  if (!Array.isArray(content)) return undefined;
-  for (const item of content) {
-    const entry = asRecord(item);
-    if (!entry || readString(entry.type) !== "toolCall") continue;
-    return readString(entry.name);
+  const contentEntries = readMessageContentEntries(message);
+  if (!contentEntries) return undefined;
+  for (const entry of contentEntries) {
+    const parsedEntry = ToolCallContentEntrySchema.safeParse(entry);
+    if (!parsedEntry.success || !parsedEntry.data.name) continue;
+    return parsedEntry.data.name;
   }
   return undefined;
 }
 
 function formatMessageStart(event: Record<string, unknown>): string {
-  const role = readString(asRecord(event.message)?.role);
+  const role = readString(readRecord(event.message)?.role);
   if (role === "user") return "用户消息已发送";
   if (role === "assistant") return "助手开始回复";
   if (role === "toolResult") return "工具结果开始返回";
@@ -100,36 +119,31 @@ function formatMessageStart(event: Record<string, unknown>): string {
 }
 
 function formatToolResultMessage(event: Record<string, unknown>): string | undefined {
-  const message = asRecord(event.message);
+  const message = readRecord(event.message);
   if (!message || readString(message.role) !== "toolResult") return undefined;
   const name = readString(message.toolName);
   return name ? `工具结果已返回：${name}` : "工具结果已返回";
 }
 
 function formatToolCallDelta(event: Record<string, unknown>): string | undefined {
-  const assistantEvent = asRecord(event.assistantMessageEvent);
+  const assistantEvent = readRecord(event.assistantMessageEvent);
   if (!assistantEvent) return undefined;
   const eventType = readString(assistantEvent.type);
   if (!eventType || !eventType.startsWith("toolcall_")) return undefined;
   const name =
-    extractToolName(asRecord(assistantEvent.partial)) ??
+    extractToolName(readAssistantEventPartial(event)) ??
     extractToolName(event.message) ??
-    readString(asRecord(event.message)?.toolName);
+    readString(readRecord(event.message)?.toolName);
   if (eventType === "toolcall_end") return name ? `思考阶段完成：${name}` : "思考阶段完成";
   return name ? `助手思考中（调用 ${name}）` : "助手思考中";
 }
 
 function containsThinking(event: Record<string, unknown>): boolean {
-  return (
-    hasThinkingContent(asRecord(event.message)) ||
-    hasThinkingContent(asRecord(event.assistantMessageEvent)?.partial)
-  );
+  return hasThinkingContent(event.message) || hasThinkingContent(readAssistantEventPartial(event));
 }
 
 function hasThinkingContent(message: unknown): boolean {
-  const record = asRecord(message);
-  if (!record) return false;
-  const content = record.content;
-  if (!Array.isArray(content)) return false;
-  return content.some((item) => readString(asRecord(item)?.type) === "thinking");
+  const contentEntries = readMessageContentEntries(message);
+  if (!contentEntries) return false;
+  return contentEntries.some((entry) => readString(entry.type) === "thinking");
 }

@@ -7,6 +7,7 @@ import {
   requestThinkingLevelChange,
   restorePendingSelections,
   syncRpcState as syncStateRpc,
+  type ModelControlQueryResultEvent,
   type ModelControlState,
 } from "./model-control-state.ts";
 import { getRenderState } from "./model-control-render.ts";
@@ -34,7 +35,7 @@ interface ModelControlsRuntime {
 
 export interface ModelControls {
   handleHostError(): void;
-  handleQueryResult(event: Record<string, unknown>): boolean;
+  handleQueryResult(event: ModelControlQueryResultEvent): boolean;
   requestAvailableModels(): void;
   supportsImageInput(): boolean;
   syncRpcState(rpc: Record<string, unknown> | undefined): void;

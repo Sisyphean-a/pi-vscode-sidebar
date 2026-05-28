@@ -1,10 +1,11 @@
+import { batch, effect, signal } from "@preact/signals";
+import { h, render } from "preact";
 import {
   filterSidebarCommands,
   isExactSidebarCommandMatch,
-  type SidebarCommandLocale,
   type SidebarCommandDefinition,
+  type SidebarCommandLocale,
 } from "../../shared/sidebar-commands.ts";
-import { renderCommandPaletteItems } from "./command-palette-dom.ts";
 
 interface CommandPaletteOptions {
   applyCommand(name: string): void;
@@ -23,41 +24,59 @@ export interface CommandPalette {
 }
 
 export function createCommandPalette(options: CommandPaletteOptions): CommandPalette {
-  let dynamicCommands: readonly SidebarCommandDefinition[] = [];
-  let selectedIndex = 0;
-  let visibleItems: SidebarCommandDefinition[] = [];
+  const dynamicCommandsSignal = signal<readonly SidebarCommandDefinition[]>([]);
+  const selectedIndexSignal = signal(0);
+  const visibleItemsSignal = signal<SidebarCommandDefinition[]>([]);
+
+  effect(() => {
+    const visibleItems = visibleItemsSignal.value;
+    if (visibleItems.length === 0) {
+      clearCommandPaletteItems(options.list);
+      options.panel.classList.add("hidden");
+      return;
+    }
+    renderCommandPaletteItems(
+      options.list,
+      visibleItems,
+      selectedIndexSignal.value,
+      options.applyCommand,
+    );
+    options.panel.classList.remove("hidden");
+  });
 
   return {
     applySelection(value) {
-      const selected = visibleItems[selectedIndex];
+      const visibleItems = visibleItemsSignal.value;
+      const selected = visibleItems[selectedIndexSignal.value];
       if (!selected) return false;
       const normalizedValue = value.trim();
       const exactMatch = isExactSidebarCommandMatch(
         normalizedValue,
         options.locale,
-        dynamicCommands,
+        dynamicCommandsSignal.value,
       );
       if (exactMatch) return true;
       options.applyCommand(selected.name);
       return normalizedValue === `/${selected.name}`;
     },
     hide() {
-      visibleItems = [];
-      selectedIndex = 0;
-      options.panel.classList.add("hidden");
-      options.list.replaceChildren();
+      batch(() => {
+        visibleItemsSignal.value = [];
+        selectedIndexSignal.value = 0;
+      });
     },
     isVisible() {
       return !options.panel.classList.contains("hidden");
     },
     moveSelection(offset) {
+      const visibleItems = visibleItemsSignal.value;
       if (visibleItems.length === 0) return false;
-      selectedIndex = (selectedIndex + offset + visibleItems.length) % visibleItems.length;
-      renderCommandPaletteItems(options.list, visibleItems, selectedIndex, options.applyCommand);
+      selectedIndexSignal.value =
+        (selectedIndexSignal.value + offset + visibleItems.length) % visibleItems.length;
       return true;
     },
     setDynamicCommands(commands) {
-      dynamicCommands = [...commands];
+      dynamicCommandsSignal.value = [...commands];
     },
     update(value) {
       const query = readCommandQuery(value);
@@ -65,10 +84,14 @@ export function createCommandPalette(options: CommandPaletteOptions): CommandPal
         this.hide();
         return;
       }
-      visibleItems = filterSidebarCommands(query, options.locale, dynamicCommands);
-      selectedIndex = 0;
-      renderCommandPaletteItems(options.list, visibleItems, selectedIndex, options.applyCommand);
-      options.panel.classList.toggle("hidden", visibleItems.length === 0);
+      batch(() => {
+        visibleItemsSignal.value = filterSidebarCommands(
+          query,
+          options.locale,
+          dynamicCommandsSignal.value,
+        );
+        selectedIndexSignal.value = 0;
+      });
     },
   };
 }
@@ -80,4 +103,59 @@ function readCommandQuery(value: string): string | undefined {
   const spaceIndex = body.indexOf(" ");
   if (spaceIndex !== -1) return undefined;
   return body.trim();
+}
+
+function clearCommandPaletteItems(list: HTMLElement): void {
+  render(null, list);
+}
+
+function renderCommandPaletteItems(
+  list: HTMLElement,
+  items: SidebarCommandDefinition[],
+  selectedIndex: number,
+  applyCommand: (name: string) => void,
+): void {
+  render(
+    h(CommandPaletteItemList, {
+      applyCommand,
+      items,
+      selectedIndex,
+    }),
+    list,
+  );
+}
+
+interface CommandPaletteItemListProps {
+  applyCommand(name: string): void;
+  items: SidebarCommandDefinition[];
+  selectedIndex: number;
+}
+
+function CommandPaletteItemList(props: CommandPaletteItemListProps) {
+  return props.items.map((item, index) => {
+    const className =
+      index === props.selectedIndex ? "command-palette-item is-selected" : "command-palette-item";
+    return h(
+      "button",
+      {
+        class: className,
+        key: `${item.id}:${item.name}`,
+        onClick() {
+          props.applyCommand(item.name);
+        },
+        type: "button",
+      },
+      h(
+        "div",
+        { class: "command-palette-item-primary" },
+        h("span", { class: "command-palette-item-name" }, item.name),
+        item.sourceBadge
+          ? h("span", { class: "command-palette-item-badge" }, item.sourceBadge)
+          : null,
+      ),
+      item.description
+        ? h("span", { class: "command-palette-item-description" }, item.description)
+        : null,
+    );
+  });
 }

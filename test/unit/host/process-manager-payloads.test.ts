@@ -86,4 +86,26 @@ describe("interpretProcessPayload", () => {
       message: 'Unknown RPC payload: {"hello":"world"}',
     });
   });
+
+  it("treats malformed rpc-like payloads as stderr", () => {
+    expect(
+      interpretProcessPayload({
+        type: "response",
+        command: "prompt",
+      }),
+    ).toEqual({
+      type: "stderr",
+      message: 'Unknown RPC payload: {"type":"response","command":"prompt"}',
+    });
+
+    expect(
+      interpretProcessPayload({
+        type: "extension_ui_request",
+        id: "req-ui-2",
+      }),
+    ).toEqual({
+      type: "stderr",
+      message: 'Unknown RPC payload: {"type":"extension_ui_request","id":"req-ui-2"}',
+    });
+  });
 });

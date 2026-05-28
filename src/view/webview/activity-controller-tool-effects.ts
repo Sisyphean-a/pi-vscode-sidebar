@@ -23,7 +23,7 @@ import {
   resolveToolResultEntryKeyFromContext,
   resolveToolRunningEntryKey,
 } from "./activity-controller-tool-effect-support.ts";
-import { readString } from "./ui-text.ts";
+import { readString } from "./activity-event-zod.ts";
 
 export function appendToolCallUpdateEffects(
   plan: ActivityControllerEffectPlan,
