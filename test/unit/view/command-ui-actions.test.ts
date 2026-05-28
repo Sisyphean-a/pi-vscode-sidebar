@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveCommandUiKeyAction } from "../../../src/view/webview/command-ui-actions.ts";
+import { resolveCommandUiKeyAction } from "../../../src/view/webview/features/command/ui-actions.ts";
 import {
   createCommandUiState,
   setCommandUiRequest,
-} from "../../../src/view/webview/command-ui-state.ts";
+} from "../../../src/view/webview/features/command/ui-state.ts";
 
 describe("command ui actions", () => {
   it("moves selection and requests a rerender for arrow keys", () => {

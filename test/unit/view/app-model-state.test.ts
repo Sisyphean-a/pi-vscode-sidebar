@@ -14,7 +14,7 @@ describe("sidebar webview model state", () => {
       postMessage() {},
     });
 
-    await import("../../../src/view/webview/app.ts");
+    await import("../../../src/view/webview/app/index.ts");
 
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -71,7 +71,7 @@ describe("sidebar webview model state", () => {
       postMessage() {},
     });
 
-    await import("../../../src/view/webview/app.ts");
+    await import("../../../src/view/webview/app/index.ts");
 
     window.dispatchEvent(
       new MessageEvent("message", {

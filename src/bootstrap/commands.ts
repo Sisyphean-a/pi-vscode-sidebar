@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { SidebarController } from "../host/controller.ts";
-import type { SidebarViewProviderHandle } from "../view/provider.ts";
+import type { SidebarViewProviderHandle } from "../view/extension/provider/provider.ts";
 
 interface RegisterSidebarCommandsOptions {
   bridge: { dispose(): Promise<void> } | undefined;

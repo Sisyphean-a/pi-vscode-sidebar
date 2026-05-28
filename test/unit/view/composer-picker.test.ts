@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 
-import { createComposerPicker } from "../../../src/view/webview/composer-picker.ts";
+import { createComposerPicker } from "../../../src/view/webview/features/composer/picker.ts";
 
 describe("composer picker", () => {
   it("opens, changes selection, and closes on external dismiss", () => {

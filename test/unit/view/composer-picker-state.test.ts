@@ -9,7 +9,7 @@ import {
   setComposerPickerFallbackLabel,
   setComposerPickerOptions,
   setComposerPickerValue,
-} from "../../../src/view/webview/composer-picker-state.ts";
+} from "../../../src/view/webview/features/composer/picker-state.ts";
 
 describe("composer picker state", () => {
   it("tracks open state transitions", () => {

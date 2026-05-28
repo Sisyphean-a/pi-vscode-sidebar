@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSidebarController } from "../../../src/host/controller.ts";
-import type { ProcessEvent } from "../../../src/host/process-manager.ts";
+import type { ProcessEvent } from "../../../src/host/process/manager.ts";
 
 function createHarness(commandData?: Partial<Record<string, unknown>>) {
   const emitted: unknown[] = [];

@@ -4,7 +4,7 @@ import {
   resolveCommandUiOpenPlan,
   resolvePendingCommandUiAction,
   toResumeCommandUiItems,
-} from "../../../src/host/controller-command-ui-flow-actions.ts";
+} from "../../../src/host/command/ui/actions.ts";
 
 describe("controller command ui flow actions", () => {
   it("builds the correct open plans for resume and tree commands", () => {

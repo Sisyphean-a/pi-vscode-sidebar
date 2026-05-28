@@ -6,7 +6,7 @@ import {
   moveCommandUiSelection,
   readCommandUiSelectionPayload,
   setCommandUiRequest,
-} from "../../../src/view/webview/command-ui-state.ts";
+} from "../../../src/view/webview/features/command/ui-state.ts";
 
 describe("command ui state", () => {
   it("selects the active item when a request is shown and falls back to index 0", () => {

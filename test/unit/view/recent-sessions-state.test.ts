@@ -8,7 +8,7 @@ import {
   selectRecentSession,
   setRecentSessionsVisibility,
   updateRecentSessionsState,
-} from "../../../src/view/webview/recent-sessions-state.ts";
+} from "../../../src/view/webview/features/recent-sessions/state.ts";
 
 describe("recent sessions state", () => {
   it("builds preview/full lists and only opens dialog when more than preview limit", () => {

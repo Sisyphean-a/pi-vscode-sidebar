@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { createExtensionUiRenderer } from "../../../src/view/webview/extension-ui.tsx";
+import { createExtensionUiRenderer } from "../../../src/view/webview/features/extension-ui/panel.tsx";
 
 describe("extension ui renderer", () => {
   it("treats notify as inline notice and reads notifyType level", () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { createPromptReferenceEditor } from "../../../src/view/webview/prompt-reference-editor.ts";
+import { createPromptReferenceEditor } from "../../../src/view/webview/ui/prompt-reference-editor.ts";
 
 describe("prompt reference editor", () => {
   it("inserts a prompt reference at current selection", () => {

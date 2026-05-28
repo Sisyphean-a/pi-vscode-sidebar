@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { createCommandUiController } from "../../../src/view/webview/command-ui.ts";
+import { createCommandUiController } from "../../../src/view/webview/features/command/ui.ts";
 
 describe("command ui controller", () => {
   it("submits selected item payload", () => {

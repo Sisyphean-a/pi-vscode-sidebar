@@ -11,7 +11,7 @@ import {
   resolveToolActivityGroup,
   resolveToolEntryKey,
   resolveToolResultEntryKey,
-} from "../../../src/view/webview/activity-controller-state.ts";
+} from "../../../src/view/webview/features/activity/controller-state.ts";
 
 describe("activity controller state", () => {
   it("remembers tool call group and args across later result events", () => {

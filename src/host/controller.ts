@@ -1,9 +1,9 @@
 import {
   createSidebarControllerWiring,
   type SidebarControllerWiring,
-} from "./controller-wiring.ts";
+} from "./controller/wiring.ts";
 import type { RpcClient } from "./rpc-client.ts";
-import type { PiRpcProcessManager } from "./process-manager.ts";
+import type { PiRpcProcessManager } from "./process/manager.ts";
 import type { RpcSessionStateStore } from "./state-store.ts";
 import type {
   CommandResult,

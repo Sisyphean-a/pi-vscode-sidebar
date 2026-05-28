@@ -5,7 +5,7 @@ import {
   createImageAttachmentState,
   removeImageAttachment,
   setImageAttachmentSupported,
-} from "../../../src/view/webview/image-attachments-state.ts";
+} from "../../../src/view/webview/features/image-attachments/state.ts";
 import type { UiPendingImageAttachment } from "../../../src/view/protocol.ts";
 
 describe("image attachment state", () => {

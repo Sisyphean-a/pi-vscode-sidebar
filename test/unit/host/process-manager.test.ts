@@ -3,8 +3,8 @@ import {
   createJsonlFramer,
   createPendingRequestStore,
   createPiRpcProcessManager,
-} from "../../../src/host/process-manager.ts";
-import type { ProcessEvent } from "../../../src/host/process-manager.ts";
+} from "../../../src/host/process/manager.ts";
+import type { ProcessEvent } from "../../../src/host/process/manager.ts";
 import { isAgentEventLike } from "../../../src/shared/rpc-types.ts";
 
 describe("createJsonlFramer", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdownBlocks } from "../../../src/view/webview/markdown-blocks.ts";
+import { parseMarkdownBlocks } from "../../../src/view/webview/features/markdown/blocks.ts";
 
 describe("parseMarkdownBlocks", () => {
   it("parses headings, paragraphs, hr, code fences, and lists in current sidebar markdown dialect", () => {

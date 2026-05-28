@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { ActivityGroupState } from "../../../src/view/webview/activity-transcript-state.ts";
+import type { ActivityGroupState } from "../../../src/view/webview/features/activity/transcript-state.ts";
 import {
   rememberActivityGroupLabel,
   refreshActivityGroupSummary,
   summarizeCompletedActivityGroup,
-} from "../../../src/view/webview/activity-transcript-summary.ts";
+} from "../../../src/view/webview/features/activity/transcript-summary.ts";
 
 describe("activity transcript summary", () => {
   it("keeps groups expanded while running entries remain", () => {

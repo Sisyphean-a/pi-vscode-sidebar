@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createLogger } from "../../../src/host/logger.ts";
 import { attachRpcTraceLogging } from "../../../src/host/rpc-trace-logger.ts";
-import type { PiRpcProcessManager, ProcessEvent } from "../../../src/host/process-manager.ts";
+import type { PiRpcProcessManager, ProcessEvent } from "../../../src/host/process/manager.ts";
 
 describe("attachRpcTraceLogging", () => {
   it("logs every outbound and inbound rpc payload at info level by default", () => {

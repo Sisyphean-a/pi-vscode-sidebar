@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 
-import { bindAppEventBindings } from "../../../src/view/webview/app-event-bindings.ts";
+import { bindAppEventBindings } from "../../../src/view/webview/app/event-bindings.ts";
 
 describe("app event bindings", () => {
   it("posts abort instead of sending a prompt while streaming", () => {

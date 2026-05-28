@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { SidebarCommandDefinition } from "../../../src/shared/sidebar-commands.ts";
-import { createCommandPalette } from "../../../src/view/webview/command-palette.ts";
+import { createCommandPalette } from "../../../src/view/webview/features/command/palette.ts";
 
 describe("command palette", () => {
   it("updates visible items and applies selected command unless exact match", () => {

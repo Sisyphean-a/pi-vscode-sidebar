@@ -3,7 +3,7 @@ import {
   createCommandUiFlowState,
   rememberPendingCommandUiRequest,
   takePendingCommandUiRequest,
-} from "../../../src/host/controller-command-ui-flow-state.ts";
+} from "../../../src/host/command/ui/state.ts";
 
 describe("controller command ui flow state", () => {
   it("stores and removes pending requests by request id", () => {

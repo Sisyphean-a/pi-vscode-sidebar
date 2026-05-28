@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 
-import { handleImageAttachmentPaste } from "../../../src/view/webview/image-attachments-paste.ts";
+import { handleImageAttachmentPaste } from "../../../src/view/webview/features/image-attachments/paste.ts";
 
 describe("image attachment paste", () => {
   it("reads a pasted image and forwards a store payload when input is supported", async () => {

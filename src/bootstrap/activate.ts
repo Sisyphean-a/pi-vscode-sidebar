@@ -10,13 +10,13 @@ import {
 } from "./runtime.ts";
 import { createLogBroadcaster } from "../host/log-broadcaster.ts";
 import { createSidebarController } from "../host/controller.ts";
-import { createPiRpcProcessManager } from "../host/process-manager.ts";
+import { createPiRpcProcessManager } from "../host/process/manager.ts";
 import { createRpcClient } from "../host/rpc-client.ts";
 import { createRpcSessionStateStore } from "../host/state-store.ts";
 import { createRecentSessionsProvider } from "../session/recent-sessions.ts";
-import { createPanelLogViewProvider } from "../view/panel-log-provider.ts";
+import { createPanelLogViewProvider } from "../view/extension/panel-log/provider.ts";
 import { createSessionTracker } from "../session/tracker.ts";
-import { createSidebarViewProvider } from "../view/provider.ts";
+import { createSidebarViewProvider } from "../view/extension/provider/provider.ts";
 
 export async function activate(context: vscode.ExtensionContext) {
   const processManager = createPiRpcProcessManager();

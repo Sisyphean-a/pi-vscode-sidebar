@@ -3,7 +3,7 @@ import {
   createActivityTranscriptState,
   finalizeActivityGroup,
   recordActivityEntry,
-} from "../../../src/view/webview/activity-transcript-state.ts";
+} from "../../../src/view/webview/features/activity/transcript-state.ts";
 
 describe("activity transcript state", () => {
   it("expands while entries are running and collapses to completed thinking summary", () => {

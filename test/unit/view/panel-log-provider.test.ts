@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createLogBroadcaster } from "../../../src/host/log-broadcaster.ts";
-import { createPanelLogViewProvider } from "../../../src/view/panel-log-provider.ts";
+import { createPanelLogViewProvider } from "../../../src/view/extension/panel-log/provider.ts";
 
 vi.mock("vscode", () => ({
   Uri: {

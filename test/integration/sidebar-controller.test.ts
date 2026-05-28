@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createSidebarController } from "../../src/host/controller.ts";
-import type { ProcessEvent } from "../../src/host/process-manager.ts";
+import type { ProcessEvent } from "../../src/host/process/manager.ts";
 
 describe("sidebar controller integration flow", () => {
   it("handles prompt stream, tool lifecycle events, and session switch", async () => {

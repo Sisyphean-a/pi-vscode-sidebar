@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { RecentSessionSummary } from "../../../src/shared/recent-sessions.ts";
-import { createRecentSessionsPanel } from "../../../src/view/webview/recent-sessions.ts";
+import { createRecentSessionsPanel } from "../../../src/view/webview/features/recent-sessions/panel.ts";
 
 describe("recent sessions panel", () => {
   it("supports open/close/select flow while keeping active session behavior", () => {

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createConversationPageState } from "../../../src/view/webview/conversation-page-state.ts";
+import { createConversationPageState } from "../../../src/view/webview/features/conversation/page-state.ts";
 import {
   applyConversationPageStateMessage,
   applyConversationReplayQueryResult,
-} from "../../../src/view/webview/conversation-page-effects.ts";
+} from "../../../src/view/webview/features/conversation/page-effects.ts";
 
 describe("conversation page effects", () => {
   it("applies state updates and refreshes recent sessions with the current session path", () => {

@@ -4,7 +4,7 @@ import {
   renderModelPicker,
   renderThinkingLevelPicker,
   type ModelPickerControls,
-} from "../../../src/view/webview/model-picker-ui.ts";
+} from "../../../src/view/webview/features/model/picker-ui.ts";
 
 describe("model picker ui", () => {
   it("renders model options", () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import type { UiPendingImageAttachment } from "../../../src/view/protocol.ts";
-import { createConversationFeed } from "../../../src/view/webview/conversation-feed.ts";
+import { createConversationFeed } from "../../../src/view/webview/features/conversation/feed.ts";
 
 describe("conversation feed", () => {
   beforeEach(() => {

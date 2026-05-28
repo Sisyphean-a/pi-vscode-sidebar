@@ -3,7 +3,7 @@ import { createBridge } from "../bridge/extension-bridge.ts";
 import type { LogBroadcaster } from "../host/log-broadcaster.ts";
 import { createLogger, normalizeLogLevel, type Logger } from "../host/logger.ts";
 import { attachRpcTraceLogging } from "../host/rpc-trace-logger.ts";
-import { createPiRpcProcessManager } from "../host/process-manager.ts";
+import { createPiRpcProcessManager } from "../host/process/manager.ts";
 import { createRpcClient } from "../host/rpc-client.ts";
 import {
   createPiRpcArgs,

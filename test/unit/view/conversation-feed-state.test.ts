@@ -4,7 +4,7 @@ import {
   createConversationFeedState,
   shouldCollapseToolText,
   summarizeToolText,
-} from "../../../src/view/webview/conversation-feed-state.ts";
+} from "../../../src/view/webview/features/conversation/feed-state.ts";
 
 describe("conversation feed state", () => {
   it("promotes from the first existing fallback key", () => {

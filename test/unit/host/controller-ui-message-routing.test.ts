@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createControllerUiMessageRouter } from "../../../src/host/controller-ui-message-routing.ts";
+import { createControllerUiMessageRouter } from "../../../src/host/controller/ui-message-router.ts";
 
 describe("controller ui message routing", () => {
   it("routes set_model through runtime command using the current session phase", async () => {

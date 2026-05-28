@@ -7,7 +7,7 @@ import {
   isUnsupportedGetMessagesError,
   needsDynamicSlashCommandRefresh,
   rememberDynamicSlashCommands,
-} from "../../../src/host/controller-rpc-flow-support.ts";
+} from "../../../src/host/rpc/flow-support.ts";
 
 describe("controller rpc flow support", () => {
   it("tracks when dynamic slash commands need refreshing", () => {

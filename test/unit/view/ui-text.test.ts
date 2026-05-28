@@ -3,7 +3,7 @@ import {
   stripLeadingThinkingBlocks,
   stringifyJson,
   truncateText,
-} from "../../../src/view/webview/ui-text.ts";
+} from "../../../src/view/webview/ui/text.ts";
 import { describe, expect, it } from "vitest";
 
 describe("ui text helpers", () => {

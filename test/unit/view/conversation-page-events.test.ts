@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveConversationPageEvent } from "../../../src/view/webview/conversation-page-events.ts";
+import { resolveConversationPageEvent } from "../../../src/view/webview/features/conversation/page-events.ts";
 
 describe("resolveConversationPageEvent", () => {
   it("resolves get_messages query results from nested payloads", () => {

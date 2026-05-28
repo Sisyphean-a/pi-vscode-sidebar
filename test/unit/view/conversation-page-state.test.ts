@@ -8,7 +8,7 @@ import {
   shouldShowScrollToBottomButton,
   syncConversationContent,
   syncNearBottom,
-} from "../../../src/view/webview/conversation-page-state.ts";
+} from "../../../src/view/webview/features/conversation/page-state.ts";
 
 describe("conversation page state", () => {
   it("shows recent sessions only after replay resolves and hides them once content appears", () => {

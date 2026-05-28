@@ -5,7 +5,7 @@ import {
   requestThinkingLevelChange,
   requestModelChange,
   syncRpcState,
-} from "../../../src/view/webview/model-control-state.ts";
+} from "../../../src/view/webview/features/model/control-state.ts";
 
 describe("model control state", () => {
   it("builds disambiguated model labels from available model query results", () => {

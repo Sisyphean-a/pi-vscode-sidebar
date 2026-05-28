@@ -9,7 +9,7 @@ import {
   readSelectedCommandUiId,
   readSlashCommands,
   readTreeCommandUiItems,
-} from "../../../src/host/controller-command-ui-readers.ts";
+} from "../../../src/host/command/ui/readers.ts";
 
 describe("controller command ui readers", () => {
   it("reads model command ui items with provider detail and payload", () => {

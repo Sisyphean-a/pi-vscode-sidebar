@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSidebarController } from "../../../src/host/controller.ts";
-import type { ProcessEvent } from "../../../src/host/process-manager.ts";
+import type { ProcessEvent } from "../../../src/host/process/manager.ts";
 import type { RecentSessionSummary } from "../../../src/shared/recent-sessions.ts";
 
 function createHarness(options?: {

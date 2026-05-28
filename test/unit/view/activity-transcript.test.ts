@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createActivityTranscript,
   type ActivityEntryUpdate,
-} from "../../../src/view/webview/activity-transcript.ts";
+} from "../../../src/view/webview/features/activity/transcript.ts";
 
 describe("activity transcript", () => {
   it("supports note append, key rename and reset cleanup", () => {

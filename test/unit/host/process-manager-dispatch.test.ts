@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { dispatchProcessPayload } from "../../../src/host/process-manager-dispatch.ts";
-import type { ProcessEvent } from "../../../src/host/process-manager.ts";
+import { dispatchProcessPayload } from "../../../src/host/process/dispatch.ts";
+import type { ProcessEvent } from "../../../src/host/process/manager.ts";
 import type { RpcResponse } from "../../../src/shared/rpc-types.ts";
 
 describe("dispatchProcessPayload", () => {

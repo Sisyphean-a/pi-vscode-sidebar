@@ -3,7 +3,7 @@ import {
   readToolArgsFromContent,
   readToolCallIdFromContent,
   readToolNameFromContent,
-} from "../../../src/view/webview/activity-event-tool-call.ts";
+} from "../../../src/view/webview/features/activity/event-tool-call.ts";
 
 describe("activity event tool-call readers", () => {
   it("reads tool args from text and object payloads", () => {

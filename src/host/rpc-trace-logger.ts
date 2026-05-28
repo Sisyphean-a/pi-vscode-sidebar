@@ -1,5 +1,5 @@
 import type { Logger } from "./logger.ts";
-import type { PiRpcProcessManager, ProcessEvent } from "./process-manager.ts";
+import type { PiRpcProcessManager, ProcessEvent } from "./process/manager.ts";
 import type { Unsubscribe } from "./message-bus.ts";
 
 export function attachRpcTraceLogging(

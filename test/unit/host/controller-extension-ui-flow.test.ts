@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createControllerExtensionUiFlow } from "../../../src/host/controller-extension-ui-flow.ts";
+import { createControllerExtensionUiFlow } from "../../../src/host/controller/ui/extension-flow.ts";
 import type { RpcResponse } from "../../../src/shared/rpc-types.ts";
 
 describe("controller extension ui flow", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createUiMessagePoster } from "../../../src/view/webview/ui-message-poster.ts";
+import { createUiMessagePoster } from "../../../src/view/webview/host/ui-message-poster.ts";
 
 describe("ui message poster", () => {
   it("posts ui_ready without correlationId", () => {

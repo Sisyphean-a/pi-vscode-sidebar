@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   renderAssistantMarkdown,
   renderPlainTextWithReferences,
-} from "../../../src/view/webview/markdown.ts";
+} from "../../../src/view/webview/features/markdown/markdown.ts";
 
 describe("markdown renderer", () => {
   it("renders plain text references as clickable chips with line breaks", () => {

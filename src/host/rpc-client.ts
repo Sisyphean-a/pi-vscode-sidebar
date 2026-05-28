@@ -4,7 +4,7 @@ import type {
   RpcResponse,
   RpcSessionState,
 } from "../shared/rpc-types.ts";
-import type { PiRpcProcessManager } from "./process-manager.ts";
+import type { PiRpcProcessManager } from "./process/manager.ts";
 
 export interface RpcClient {
   send(command: RpcCommand, timeoutMs?: number): Promise<RpcResponse>;

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createModelControlState } from "../../../src/view/webview/model-control-state.ts";
+import { createModelControlState } from "../../../src/view/webview/features/model/control-state.ts";
 import {
   applyAvailableModelsQueryResult,
   applyModelCommandResult,
   applyThinkingLevelCommandResult,
   syncModelControlRpcState,
-} from "../../../src/view/webview/model-control-effects.ts";
+} from "../../../src/view/webview/features/model/control-effects.ts";
 
 describe("model control effects", () => {
   it("applies available model catalogs into state", () => {

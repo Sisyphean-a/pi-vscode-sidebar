@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createSidebarViewProvider,
   type SidebarViewProviderHandle,
-} from "../../../src/view/provider.ts";
+} from "../../../src/view/extension/provider/provider.ts";
 
 vi.mock("vscode", () => {
   class MockPosition {

@@ -5,13 +5,13 @@ import {
   resolveComposerPickerOpenedElsewhereAction,
   resolveComposerPickerSelectionAction,
   resolveComposerPickerTriggerAction,
-} from "../../../src/view/webview/composer-picker-actions.ts";
+} from "../../../src/view/webview/features/composer/picker-actions.ts";
 import {
   createComposerPickerState,
   openComposerPicker,
   setComposerPickerOptions,
   setComposerPickerValue,
-} from "../../../src/view/webview/composer-picker-state.ts";
+} from "../../../src/view/webview/features/composer/picker-state.ts";
 
 describe("composer picker actions", () => {
   it("toggles open state from the trigger and ignores disabled or empty pickers", () => {

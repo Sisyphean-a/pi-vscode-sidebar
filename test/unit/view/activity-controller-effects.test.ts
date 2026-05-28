@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   createActivityControllerState,
   rememberToolActivity,
-} from "../../../src/view/webview/activity-controller-state.ts";
+} from "../../../src/view/webview/features/activity/controller-state.ts";
 import {
   planMessageEndEffects,
   planMessageUpdateEffects,
   planToolExecutionEffects,
-} from "../../../src/view/webview/activity-controller-effects.ts";
-import { planHistoryMessageEffects } from "../../../src/view/webview/activity-controller-history-effects.ts";
+} from "../../../src/view/webview/features/activity/controller-effects.ts";
+import { planHistoryMessageEffects } from "../../../src/view/webview/features/activity/controller-history-effects.ts";
 
 describe("activity controller effects", () => {
   it("plans assistant message end with stream promotion and activity finalization", () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildModelControlCatalog,
   resolveActiveCatalogModel,
-} from "../../../src/view/webview/model-control-catalog.ts";
+} from "../../../src/view/webview/features/model/control-catalog.ts";
 
 describe("model control catalog", () => {
   it("builds sorted model values and disambiguated labels from query results", () => {

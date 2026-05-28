@@ -4,7 +4,7 @@ import {
   summarizeToolDetailSummary,
   summarizeToolLabel,
   summarizeToolResultDetailSummary,
-} from "../../../src/view/webview/activity-tool-presentation.ts";
+} from "../../../src/view/webview/features/activity/tool-presentation.ts";
 
 describe("activity tool presentation", () => {
   it("summarizes tool labels from known args and output conventions", () => {

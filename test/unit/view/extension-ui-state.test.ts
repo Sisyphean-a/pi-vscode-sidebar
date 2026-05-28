@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveExtensionUiRequest } from "../../../src/view/webview/extension-ui-state.ts";
+import { resolveExtensionUiRequest } from "../../../src/view/webview/features/extension-ui/state.ts";
 
 describe("extension ui state", () => {
   it("returns undefined for invalid envelope and missing required ids", () => {

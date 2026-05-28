@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 
-import { createAppLifecycle } from "../../../src/view/webview/app-lifecycle.ts";
+import { createAppLifecycle } from "../../../src/view/webview/app/lifecycle.ts";
 
 describe("app lifecycle", () => {
   it("syncs streaming chrome state to send/new-session controls", () => {

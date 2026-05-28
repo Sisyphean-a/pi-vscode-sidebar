@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createProviderMessageHandler } from "../../../src/view/provider-message-handler.ts";
+import { createProviderMessageHandler } from "../../../src/view/extension/provider/message-handler.ts";
 
 describe("provider message handler", () => {
   it("shows an error for invalid ui payloads", async () => {

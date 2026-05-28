@@ -4,9 +4,9 @@ import {
   createModelControlState,
   requestModelChange,
   requestThinkingLevelChange,
-} from "../../../src/view/webview/model-control-state.ts";
-import { getRenderState } from "../../../src/view/webview/model-control-render.ts";
-import { handleQueryResult, syncRpcState } from "../../../src/view/webview/model-control-state.ts";
+} from "../../../src/view/webview/features/model/control-state.ts";
+import { getRenderState } from "../../../src/view/webview/features/model/control-render.ts";
+import { handleQueryResult, syncRpcState } from "../../../src/view/webview/features/model/control-state.ts";
 
 describe("model control render", () => {
   it("prefers pending model capabilities until a model change command resolves", () => {

@@ -6,7 +6,7 @@ import {
   shouldEmitRuntimeQueryResult,
   shouldReplayRuntimeMessages,
   withRuntimeCommandId,
-} from "../../../src/host/controller-runtime-flow-support.ts";
+} from "../../../src/host/runtime/flow-support.ts";
 
 describe("controller runtime flow support", () => {
   it("adds correlation id to rpc commands only when command id is missing", () => {

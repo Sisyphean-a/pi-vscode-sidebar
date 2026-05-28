@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractAvailableModels } from "../../../src/view/webview/model-option-readers.ts";
+import { extractAvailableModels } from "../../../src/view/webview/features/model/option-readers.ts";
 
 describe("model option readers", () => {
   it("reads available models from direct or nested data payloads", () => {

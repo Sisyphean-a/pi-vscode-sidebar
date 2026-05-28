@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatEventMessage,
   mapStatusLabel,
-} from "../../../src/view/webview/activity-event-message.ts";
+} from "../../../src/view/webview/features/activity/event-message.ts";
 
 describe("activity event message formatter", () => {
   it("formats tool execution progress with tool name", () => {

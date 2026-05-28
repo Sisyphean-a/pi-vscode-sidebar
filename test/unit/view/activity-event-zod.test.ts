@@ -5,7 +5,7 @@ import {
   readRecordArray,
   readString,
   readToolExecutionEventType,
-} from "../../../src/view/webview/activity-event-zod.ts";
+} from "../../../src/view/webview/features/activity/event-zod.ts";
 
 describe("activity event zod readers", () => {
   it("reads record and record array values", () => {

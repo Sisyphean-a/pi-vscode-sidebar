@@ -12,7 +12,7 @@ export default defineConfig([
     },
   },
   {
-    input: "src/view/webview/app.ts",
+    input: "src/view/webview/app/index.ts",
     platform: "browser",
     output: {
       file: "dist/webview/app.js",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpretProcessPayload } from "../../../src/host/process-manager-payloads.ts";
+import { interpretProcessPayload } from "../../../src/host/process/payloads.ts";
 
 describe("interpretProcessPayload", () => {
   it("marks id-less rpc responses for direct event emission", () => {

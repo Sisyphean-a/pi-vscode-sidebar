@@ -6,7 +6,7 @@ import {
   readResponseId,
   readToolCallIdFromEvent,
   readToolNameFromEvent,
-} from "../../../src/view/webview/activity-event-readers.ts";
+} from "../../../src/view/webview/features/activity/event-readers.ts";
 
 describe("activity event readers", () => {
   it("extracts assistant text from structured message content", () => {

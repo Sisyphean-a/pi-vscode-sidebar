@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createEffectPlan } from "../../../src/view/webview/activity-controller-effect-plan.ts";
+import { createEffectPlan } from "../../../src/view/webview/features/activity/controller-effect-plan.ts";
 import {
   createActivityControllerState,
   rememberToolActivity,
-} from "../../../src/view/webview/activity-controller-state.ts";
+} from "../../../src/view/webview/features/activity/controller-state.ts";
 import {
   buildToolCallTranscriptUpdate,
   buildToolExecutionTranscriptUpdate,
@@ -12,7 +12,7 @@ import {
   resolvePlannedToolGroupKey,
   resolveToolResultEntryKeyFromContext,
   resolveToolRunningEntryKey,
-} from "../../../src/view/webview/activity-controller-tool-effect-support.ts";
+} from "../../../src/view/webview/features/activity/controller-tool-effect-support.ts";
 
 describe("activity controller tool effect support", () => {
   it("resolves planned tool group key from remembered tool activity or assistant response", () => {

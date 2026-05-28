@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 
-import { createImageAttachmentController } from "../../../src/view/webview/image-attachments.ts";
+import { createImageAttachmentController } from "../../../src/view/webview/features/image-attachments/controller.ts";
 import type { UiPendingImageAttachment } from "../../../src/view/protocol.ts";
 
 describe("image attachments controller", () => {

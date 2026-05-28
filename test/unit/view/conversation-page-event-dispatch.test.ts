@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { dispatchConversationPageEvent } from "../../../src/view/webview/conversation-page-event-dispatch.ts";
+import { dispatchConversationPageEvent } from "../../../src/view/webview/features/conversation/page-event-dispatch.ts";
 
 describe("dispatchConversationPageEvent", () => {
   it("forwards activity message updates to the activity controller", () => {

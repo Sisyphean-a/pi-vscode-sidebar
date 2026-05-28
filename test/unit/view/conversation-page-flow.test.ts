@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { createConversationPageFlow } from "../../../src/view/webview/conversation-page-flow.ts";
+import { createConversationPageFlow } from "../../../src/view/webview/features/conversation/page-flow.ts";
 
 describe("conversation page flow", () => {
   it("opens file reference when clicking a rendered reference chip", () => {
