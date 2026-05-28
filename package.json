@@ -79,14 +79,16 @@
         {
           "type": "webview",
           "id": "piSidebar.main",
-          "name": "对话"
+          "name": "对话",
+          "icon": "assets/logo.svg"
         }
       ],
       "piSidebarPanel": [
         {
           "type": "webview",
           "id": "piSidebar.logs",
-          "name": "日志"
+          "name": "日志",
+          "icon": "assets/logo.svg"
         }
       ]
     },
@@ -132,11 +134,6 @@
       }
     }
   },
-  "activationEvents": [
-    "onView:piSidebar.main",
-    "onView:piSidebar.logs",
-    "onCommand:piSidebar.focus"
-  ],
   "engines": {
     "vscode": "^1.108.0"
   },
