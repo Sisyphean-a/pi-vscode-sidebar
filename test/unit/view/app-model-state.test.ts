@@ -125,6 +125,50 @@ describe("sidebar webview model state", () => {
     await waitForFlush();
     expect(imageButton?.disabled).toBe(true);
   });
+
+  it("renders replayed history messages after switching sessions", async () => {
+    (
+      globalThis as unknown as { acquireVsCodeApi: () => { postMessage(message: unknown): void } }
+    ).acquireVsCodeApi = () => ({
+      postMessage() {},
+    });
+
+    await import("../../../src/view/webview/app/index.ts");
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "event",
+          data: {
+            type: "query_result",
+            command: "get_messages",
+            replace: true,
+            data: {
+              messages: [
+                {
+                  id: "user-1",
+                  role: "user",
+                  content: [{ type: "text", text: "hi" }],
+                },
+                {
+                  id: "assistant-1",
+                  role: "assistant",
+                  content: [{ type: "text", text: "hello" }],
+                },
+              ],
+            },
+          },
+        },
+      }),
+    );
+
+    await waitForFlush();
+
+    const messageFeed = document.getElementById("message-feed");
+    expect(messageFeed?.textContent).toContain("hi");
+    expect(messageFeed?.textContent).toContain("hello");
+    expect(messageFeed?.querySelector("[data-inline-activity-slot='true']")).toBeNull();
+  });
 });
 
 async function waitForFlush(): Promise<void> {

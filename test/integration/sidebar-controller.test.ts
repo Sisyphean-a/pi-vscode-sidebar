@@ -135,6 +135,84 @@ describe("sidebar controller integration flow", () => {
     expect(hasExtensionUiMethod(emitted, "setTitle")).toBe(true);
     expect(hasExtensionUiMethod(emitted, "set_editor_text")).toBe(true);
   });
+
+  it("enters streaming phase as soon as assistant message_start arrives", async () => {
+    const emitted: unknown[] = [];
+    let processListener: ((event: ProcessEvent) => void) | undefined;
+    let phase: "idle" | "streaming" | "awaiting_extension_ui" | "process_dead" = "idle";
+
+    const controller = createSidebarController({
+      processManager: {
+        async start() {},
+        async stop() {},
+        isRunning() {
+          return true;
+        },
+        async send(command) {
+          return { type: "response", command: command.type, success: true };
+        },
+        onEvent(listener) {
+          processListener = listener;
+          return () => {
+            processListener = undefined;
+          };
+        },
+      },
+      rpcClient: {
+        async send(command) {
+          return { type: "response", command: command.type, success: true };
+        },
+        async sendExtensionUiResponse(response) {
+          return { type: "response", command: "extension_ui_response", success: true };
+        },
+        async getState() {
+          return {
+            thinkingLevel: "medium",
+            isStreaming: phase === "streaming",
+            sessionId: "session-1",
+            messageCount: 1,
+            pendingMessageCount: 0,
+          };
+        },
+      },
+      stateStore: {
+        snapshot() {
+          return { phase, updatedAt: Date.now() };
+        },
+        markIdle() {
+          phase = "idle";
+          return { phase, updatedAt: Date.now() };
+        },
+        markStreaming() {
+          phase = "streaming";
+          return { phase, updatedAt: Date.now() };
+        },
+        markAwaitingExtensionUi() {
+          phase = "awaiting_extension_ui";
+          return { phase, updatedAt: Date.now() };
+        },
+        markProcessDead(error) {
+          phase = "process_dead";
+          return { phase, updatedAt: Date.now(), lastError: error };
+        },
+      },
+      async ensureStarted() {},
+    });
+
+    controller.connect((message) => {
+      emitted.push(message);
+    });
+
+    processListener?.({
+      type: "message_start",
+      message: {
+        role: "assistant",
+        content: [],
+      },
+    });
+
+    expect(emitted.some((entry) => hasStatePhase(entry, "streaming"))).toBe(true);
+  });
 });
 
 function hasType(payload: unknown, type: string): boolean {

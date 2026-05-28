@@ -4,6 +4,7 @@ import type { ProcessEvent } from "../process/manager.ts";
 import type { RpcClient } from "../rpc-client.ts";
 import type { RpcSessionStateStore } from "../state-store.ts";
 import type { HostToUiMessage } from "../../view/protocol.ts";
+import { isAssistantMessageStartProcessEvent } from "./process-events-support.ts";
 
 interface CreateProcessEventFlowOptions {
   emit(message: HostToUiMessage): void;
@@ -67,7 +68,11 @@ export function createProcessEventFlow(options: CreateProcessEventFlowOptions): 
         extensionUiFlow.handleRequest(event);
         return;
       }
-      if (event.type === "agent_start" || event.type === "message_update") {
+      if (
+        event.type === "agent_start" ||
+        event.type === "message_update" ||
+        isAssistantMessageStartProcessEvent(event)
+      ) {
         options.stateStore.markStreaming();
         options.emitState();
         options.emit({ type: "event", data: event });

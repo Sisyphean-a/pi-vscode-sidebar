@@ -27,6 +27,7 @@ export interface ActivityTranscript {
 interface ActivityTranscriptOptions {
   container: HTMLElement;
   onChange?(): void;
+  resolveContainer?(): HTMLElement | null | undefined;
 }
 
 interface ActivityTranscriptNoteState {
@@ -69,7 +70,10 @@ export function createActivityTranscript(options: ActivityTranscriptOptions): Ac
   const viewStateSignal = signal<ActivityTranscriptViewState>({ blocks: [] });
 
   effect(() => {
-    render(h(ActivityTranscriptBlocks, { viewState: viewStateSignal.value }), options.container);
+    render(
+      h(ActivityTranscriptBlocks, { viewState: viewStateSignal.value }),
+      options.resolveContainer?.() ?? options.container,
+    );
   });
 
   return {

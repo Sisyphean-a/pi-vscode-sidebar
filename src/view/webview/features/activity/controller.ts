@@ -1,4 +1,7 @@
 import {
+  createProcessingStatus,
+  formatProcessingStatus,
+  isAssistantMessageStartEvent,
   planMessageEndEffects,
   planMessageUpdateEffects,
   planToolExecutionEffects,
@@ -19,11 +22,14 @@ interface CreateActivityControllerOptions {
   container: HTMLElement;
   conversationFeed: ConversationFeed;
   onChange(): void;
+  resolveContainer?(): HTMLElement | null | undefined;
 }
 
 export interface ActivityController {
+  applyAgentEnd(event: Record<string, unknown>): void;
   appendInlineNote(message: string): void;
   applyMessageEnd(event: Record<string, unknown>): void;
+  applyMessageStart(event: Record<string, unknown>): void;
   applyMessageUpdate(event: Record<string, unknown>): void;
   applyToolExecutionEvent(event: Record<string, unknown>, eventType: string): void;
   hydrateHistoryMessage(message: Record<string, unknown>, index: number): void;
@@ -34,18 +40,45 @@ export function createActivityController(
   options: CreateActivityControllerOptions,
 ): ActivityController {
   const activityTranscript = createActivityTranscript({
-    container: options.container,
+    container: resolveActivityContainer(options),
     onChange: options.onChange,
+    resolveContainer: options.resolveContainer,
   });
   const state = createActivityControllerState();
   const applyPlan = createActivityPlanApplier(state, activityTranscript, options.conversationFeed);
+  let processingStatus: ReturnType<typeof createProcessingStatus> | undefined;
+
+  const stopProcessingStatus = () => {
+    processingStatus?.stop();
+    activityTranscript.appendNote(state.processingStatusKey, "");
+    processingStatus = undefined;
+  };
 
   return {
+    applyAgentEnd() {
+      stopProcessingStatus();
+    },
     appendInlineNote(message) {
       activityTranscript.appendNote(nextInlineNoteKey(state), message);
     },
     applyMessageEnd(event) {
       applyPlan(planMessageEndEffects(state, event));
+    },
+    applyMessageStart(event) {
+      if (!isAssistantMessageStartEvent(event) || processingStatus) return;
+      options.conversationFeed.moveInlineActivitySlotToEnd();
+      resolveActivityContainer(options);
+      processingStatus = createProcessingStatus({
+        now: () => Date.now(),
+        onTick(message) {
+          activityTranscript.appendNote(state.processingStatusKey, message);
+          options.onChange();
+        },
+      });
+      activityTranscript.appendNote(
+        state.processingStatusKey,
+        formatProcessingStatus(processingStatus.startedAt, Date.now()),
+      );
     },
     applyMessageUpdate(event) {
       applyPlan(planMessageUpdateEffects(state, event));
@@ -57,10 +90,17 @@ export function createActivityController(
       applyPlan(planHistoryMessageEffects(message, index));
     },
     reset() {
+      stopProcessingStatus();
       resetActivityControllerState(state);
       activityTranscript.reset();
     },
   };
+}
+
+function resolveActivityContainer(options: CreateActivityControllerOptions): HTMLElement {
+  const resolved = options.resolveContainer?.();
+  if (resolved) return resolved;
+  return options.container;
 }
 
 function createActivityPlanApplier(

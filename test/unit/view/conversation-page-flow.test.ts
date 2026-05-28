@@ -15,8 +15,10 @@ describe("conversation page flow", () => {
 
     const flow = createConversationPageFlow({
       activityController: {
+        applyAgentEnd: vi.fn(),
         appendInlineNote: vi.fn(),
         applyMessageEnd: vi.fn(),
+        applyMessageStart: vi.fn(),
         applyMessageUpdate: vi.fn(),
         applyToolExecutionEvent: vi.fn(),
         hydrateHistoryMessage: vi.fn(),
@@ -24,6 +26,9 @@ describe("conversation page flow", () => {
       },
       conversationFeed: {
         attachImagesToMessage: vi.fn(),
+        ensureInlineActivitySlot: vi.fn(() => document.createElement("section")),
+        findInlineActivitySlot: vi.fn(() => null),
+        moveInlineActivitySlotToEnd: vi.fn(() => document.createElement("section")),
         reset: vi.fn(),
         setMessageText: vi.fn(),
       },
@@ -52,8 +57,10 @@ describe("conversation page flow", () => {
     };
     const flow = createConversationPageFlow({
       activityController: {
+        applyAgentEnd: vi.fn(),
         appendInlineNote: vi.fn(),
         applyMessageEnd: vi.fn(),
+        applyMessageStart: vi.fn(),
         applyMessageUpdate: vi.fn(),
         applyToolExecutionEvent: vi.fn(),
         hydrateHistoryMessage: vi.fn(),
@@ -61,6 +68,9 @@ describe("conversation page flow", () => {
       },
       conversationFeed: {
         attachImagesToMessage: vi.fn(),
+        ensureInlineActivitySlot: vi.fn(() => document.createElement("section")),
+        findInlineActivitySlot: vi.fn(() => null),
+        moveInlineActivitySlotToEnd: vi.fn(() => document.createElement("section")),
         reset: vi.fn(),
         setMessageText: vi.fn(),
       },

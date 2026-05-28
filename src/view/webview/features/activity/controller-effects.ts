@@ -25,11 +25,53 @@ import {
 } from "./controller-tool-effects.ts";
 import { readRecord, readString } from "./event-zod.ts";
 
+const PROCESSING_STATUS_TICK_MS = 1000;
+
+interface CreateProcessingStatusOptions {
+  now(): number;
+  onTick(message: string): void;
+}
+
+interface ProcessingStatusHandle {
+  startedAt: number;
+  stop(): void;
+}
+
 export type {
   ActivityControllerEffect,
   ActivityControllerEffectPlan,
 } from "./controller-effect-plan.ts";
 export { planToolExecutionEffects } from "./controller-tool-effects.ts";
+
+export function isAssistantMessageStartEvent(event: Record<string, unknown>): boolean {
+  const message = readRecord(event.message);
+  return readString(message?.role) === "assistant";
+}
+
+export function formatProcessingStatus(startedAt: number, now: number): string {
+  const elapsedSeconds = Math.max(0, Math.floor((now - startedAt) / 1000));
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+  const seconds = elapsedSeconds % 60;
+  if (hours > 0) return `已处理 ${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `已处理 ${minutes}m ${seconds}s`;
+  return `已处理 ${seconds}s`;
+}
+
+export function createProcessingStatus(
+  options: CreateProcessingStatusOptions,
+): ProcessingStatusHandle {
+  const startedAt = options.now();
+  const timer = setInterval(() => {
+    options.onTick(formatProcessingStatus(startedAt, options.now()));
+  }, PROCESSING_STATUS_TICK_MS);
+  return {
+    startedAt,
+    stop() {
+      clearInterval(timer);
+    },
+  };
+}
 
 export function planMessageEndEffects(
   state: ActivityControllerState,

@@ -1,6 +1,7 @@
 import { render } from "preact";
 
 export interface AppDom {
+  activityFeed: HTMLElement;
   commandPaletteList: HTMLElement;
   commandPalettePanel: HTMLElement;
   commandResult: HTMLElement;
@@ -28,6 +29,7 @@ export function createAppDom(root: HTMLElement): AppDom {
   render(<SidebarAppShell />, root);
 
   return {
+    activityFeed: expectAppElement(root, "activity-feed"),
     commandPaletteList: expectAppElement(root, "command-palette-list"),
     commandPalettePanel: expectAppElement(root, "command-palette-panel"),
     commandResult: expectAppElement(root, "command-result"),
@@ -110,6 +112,7 @@ export function SidebarAppShell() {
       </header>
 
       <section class="conversation">
+        <div id="activity-feed" class="activity-feed"></div>
         <div id="message-feed" class="message-feed"></div>
         <button
           id="scroll-to-bottom-button"

@@ -8,7 +8,9 @@ describe("dispatchConversationPageEvent", () => {
 
     dispatchConversationPageEvent({
       activityController: {
+        applyAgentEnd: vi.fn(),
         applyMessageEnd: vi.fn(),
+        applyMessageStart: vi.fn(),
         applyMessageUpdate,
         applyToolExecutionEvent: vi.fn(),
       },
@@ -28,7 +30,9 @@ describe("dispatchConversationPageEvent", () => {
 
     dispatchConversationPageEvent({
       activityController: {
+        applyAgentEnd: vi.fn(),
         applyMessageEnd: vi.fn(),
+        applyMessageStart: vi.fn(),
         applyMessageUpdate: vi.fn(),
         applyToolExecutionEvent: vi.fn(),
       },
@@ -69,7 +73,9 @@ describe("dispatchConversationPageEvent", () => {
 
     dispatchConversationPageEvent({
       activityController: {
+        applyAgentEnd: vi.fn(),
         applyMessageEnd: vi.fn(),
+        applyMessageStart: vi.fn(),
         applyMessageUpdate: vi.fn(),
         applyToolExecutionEvent: vi.fn(),
       },
@@ -88,11 +94,56 @@ describe("dispatchConversationPageEvent", () => {
     );
   });
 
+  it("forwards assistant lifecycle events to the activity controller", () => {
+    const applyMessageStart = vi.fn();
+    const applyAgentEnd = vi.fn();
+
+    dispatchConversationPageEvent({
+      activityController: {
+        applyAgentEnd,
+        applyMessageEnd: vi.fn(),
+        applyMessageStart,
+        applyMessageUpdate: vi.fn(),
+        applyToolExecutionEvent: vi.fn(),
+      },
+      applyMessageReplayQueryResult: vi.fn(),
+      event: {
+        kind: "activityMessageStart",
+        event: { type: "message_start", message: { role: "assistant", content: [] } },
+      },
+      onDynamicCommandsChange: vi.fn(),
+    });
+
+    dispatchConversationPageEvent({
+      activityController: {
+        applyAgentEnd,
+        applyMessageEnd: vi.fn(),
+        applyMessageStart,
+        applyMessageUpdate: vi.fn(),
+        applyToolExecutionEvent: vi.fn(),
+      },
+      applyMessageReplayQueryResult: vi.fn(),
+      event: {
+        kind: "activityAgentEnd",
+        event: { type: "agent_end" },
+      },
+      onDynamicCommandsChange: vi.fn(),
+    });
+
+    expect(applyMessageStart).toHaveBeenCalledWith({
+      type: "message_start",
+      message: { role: "assistant", content: [] },
+    });
+    expect(applyAgentEnd).toHaveBeenCalledWith({ type: "agent_end" });
+  });
+
   it("ignores handled no-op events", () => {
     const applyMessageReplayQueryResult = vi.fn();
     const onDynamicCommandsChange = vi.fn();
     const activityController = {
+      applyAgentEnd: vi.fn(),
       applyMessageEnd: vi.fn(),
+      applyMessageStart: vi.fn(),
       applyMessageUpdate: vi.fn(),
       applyToolExecutionEvent: vi.fn(),
     };
@@ -106,6 +157,8 @@ describe("dispatchConversationPageEvent", () => {
 
     expect(activityController.applyMessageUpdate).not.toHaveBeenCalled();
     expect(activityController.applyMessageEnd).not.toHaveBeenCalled();
+    expect(activityController.applyMessageStart).not.toHaveBeenCalled();
+    expect(activityController.applyAgentEnd).not.toHaveBeenCalled();
     expect(activityController.applyToolExecutionEvent).not.toHaveBeenCalled();
     expect(applyMessageReplayQueryResult).not.toHaveBeenCalled();
     expect(onDynamicCommandsChange).not.toHaveBeenCalled();

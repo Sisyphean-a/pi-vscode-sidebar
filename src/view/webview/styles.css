@@ -270,6 +270,11 @@ textarea {
   padding-bottom: 10px;
 }
 
+.activity-feed {
+  display: grid;
+  gap: 10px;
+}
+
 .message-feed {
   min-height: 0;
   overflow-y: auto;

@@ -178,10 +178,13 @@ function createConversationRuntime(options: ConversationRuntimeOptions): Convers
     renderPlainTextWithReferences,
   });
   const activityController = createActivityController({
-    container: options.context.dom.messageFeed,
+    container: options.context.dom.activityFeed,
     conversationFeed,
     onChange() {
       options.context.refs.conversationPage?.handleContentChange();
+    },
+    resolveContainer() {
+      return conversationFeed.findInlineActivitySlot();
     },
   });
   const conversationPage = createConversationPageFlow({

@@ -11,6 +11,8 @@ import {
 } from "./feed-state.ts";
 
 export type { ChatRole } from "./feed-state.ts";
+const INLINE_ACTIVITY_SLOT_KEY = "activity:current";
+type FeedBlockRole = ChatRole | "activity";
 
 interface CreateConversationFeedOptions {
   container: HTMLElement;
@@ -21,6 +23,9 @@ interface CreateConversationFeedOptions {
 
 export interface ConversationFeed {
   attachImagesToMessage(messageKey: string, attachments: UiPendingImageAttachment[]): void;
+  ensureInlineActivitySlot(): HTMLElement;
+  findInlineActivitySlot(): HTMLElement | null;
+  moveInlineActivitySlotToEnd(): HTMLElement;
   reset(): void;
   setMessageText(
     key: string,
@@ -34,7 +39,7 @@ export interface ConversationFeed {
 interface ConversationFeedMessageViewState {
   attachments: UiPendingImageAttachment[];
   key: string;
-  role: ChatRole;
+  role: FeedBlockRole;
   text: string;
 }
 
@@ -62,6 +67,32 @@ export function createConversationFeed(options: CreateConversationFeedOptions): 
       state.attachments = [...attachments];
       refreshView();
       options.onChange();
+    },
+    ensureInlineActivitySlot() {
+      return ensureInlineActivitySlotElement({
+        container: options.container,
+        messageOrder,
+        messagesByKey,
+        refreshView,
+      });
+    },
+    findInlineActivitySlot() {
+      return findInlineActivitySlotElement(options.container);
+    },
+    moveInlineActivitySlotToEnd() {
+      const slot = ensureInlineActivitySlotElement({
+        container: options.container,
+        messageOrder,
+        messagesByKey,
+        refreshView,
+      });
+      const currentIndex = messageOrder.indexOf(INLINE_ACTIVITY_SLOT_KEY);
+      if (currentIndex !== -1 && currentIndex !== messageOrder.length - 1) {
+        messageOrder.splice(currentIndex, 1);
+        messageOrder.push(INLINE_ACTIVITY_SLOT_KEY);
+        refreshView();
+      }
+      return slot;
     },
     reset() {
       resetConversationFeedState(feedState);
@@ -127,16 +158,22 @@ interface ConversationFeedMessagesProps {
 
 function ConversationFeedMessages(props: ConversationFeedMessagesProps) {
   return props.messages.map((message) =>
-    h(
-      "article",
-      {
-        class: `chat-message role-${message.role}`,
-        key: message.key,
-      },
-      renderMessageAttachments(message),
-      renderMessageContent(message, props),
-      renderToolDetails(message),
-    ),
+    message.role === "activity"
+      ? h("section", {
+          class: "chat-inline-activity-slot",
+          key: message.key,
+          "data-inline-activity-slot": "true",
+        })
+      : h(
+          "article",
+          {
+            class: `chat-message role-${message.role}`,
+            key: message.key,
+          },
+          renderMessageAttachments(message),
+          renderMessageContent(message, props),
+          renderToolDetails(message),
+        ),
   );
 }
 
@@ -180,4 +217,32 @@ function renderToolDetails(message: ConversationFeedMessageViewState): Component
     h("summary", null, "查看工具输出"),
     h("pre", null, message.text),
   );
+}
+
+function ensureInlineActivitySlotElement(options: {
+  container: HTMLElement;
+  messageOrder: string[];
+  messagesByKey: Map<string, ConversationFeedMessageViewState>;
+  refreshView(): void;
+}): HTMLElement {
+  if (!options.messageOrder.includes(INLINE_ACTIVITY_SLOT_KEY)) {
+    options.messageOrder.push(INLINE_ACTIVITY_SLOT_KEY);
+    options.messagesByKey.set(INLINE_ACTIVITY_SLOT_KEY, {
+      attachments: [],
+      key: INLINE_ACTIVITY_SLOT_KEY,
+      role: "activity",
+      text: "",
+    });
+    options.refreshView();
+  }
+  const slot = options.container.querySelector("[data-inline-activity-slot='true']");
+  if (!(slot instanceof HTMLElement)) {
+    throw new Error("Missing inline activity slot.");
+  }
+  return slot;
+}
+
+function findInlineActivitySlotElement(container: HTMLElement): HTMLElement | null {
+  const slot = container.querySelector("[data-inline-activity-slot='true']");
+  return slot instanceof HTMLElement ? slot : null;
 }

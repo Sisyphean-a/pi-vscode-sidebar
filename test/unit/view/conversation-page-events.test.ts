@@ -120,9 +120,25 @@ describe("resolveConversationPageEvent", () => {
   });
 
   it("routes activity updates, tool execution events, and handled no-op events", () => {
+    expect(
+      resolveConversationPageEvent({
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      }),
+    ).toEqual({
+      kind: "activityMessageStart",
+      event: {
+        type: "message_start",
+        message: { role: "assistant", content: [] },
+      },
+    });
     expect(resolveConversationPageEvent({ type: "message_update", text: "hello" })).toEqual({
       kind: "activityMessageUpdate",
       event: { type: "message_update", text: "hello" },
+    });
+    expect(resolveConversationPageEvent({ type: "agent_end" })).toEqual({
+      kind: "activityAgentEnd",
+      event: { type: "agent_end" },
     });
     expect(resolveConversationPageEvent({ type: "tool_execution_end", toolName: "read" })).toEqual({
       kind: "toolExecutionEvent",

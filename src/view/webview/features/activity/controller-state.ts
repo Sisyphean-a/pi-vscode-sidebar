@@ -5,6 +5,7 @@ const ACTIVE_THINKING_ACTIVITY_KEY = "assistant-thinking:live";
 export interface ActivityControllerState {
   activityGroupByToolCallId: Map<string, string>;
   localActivitySeq: number;
+  processingStatusKey: string;
   toolArgsByToolCallId: Map<string, string>;
 }
 
@@ -39,6 +40,7 @@ export function createActivityControllerState(): ActivityControllerState {
   return {
     activityGroupByToolCallId: new Map<string, string>(),
     localActivitySeq: 0,
+    processingStatusKey: "note:processing",
     toolArgsByToolCallId: new Map<string, string>(),
   };
 }

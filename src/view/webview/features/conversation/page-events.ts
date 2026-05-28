@@ -7,7 +7,9 @@ type ToolExecutionEventType =
   | "tool_execution_end";
 
 export type ConversationPageEvent =
+  | { kind: "activityAgentEnd"; event: Record<string, unknown> }
   | { kind: "activityMessageEnd"; event: Record<string, unknown> }
+  | { kind: "activityMessageStart"; event: Record<string, unknown> }
   | { kind: "activityMessageUpdate"; event: Record<string, unknown> }
   | { kind: "availableCommandsQueryResult"; commands: RpcSlashCommand[] }
   | { kind: "handledNoop" }
@@ -23,7 +25,7 @@ const TOOL_EXECUTION_EVENT_TYPES = [
   "tool_execution_update",
   "tool_execution_end",
 ] as const;
-const HANDLED_NOOP_EVENT_TYPES = new Set(["rpc_command_sent", "rpc_response", "message_start"]);
+const HANDLED_NOOP_EVENT_TYPES = new Set(["rpc_command_sent", "rpc_response"]);
 const RecordSchema = z.object({}).catchall(z.unknown());
 const EventSchema = RecordSchema.extend({ type: z.string() });
 const QueryResultEventSchema = EventSchema.extend({
@@ -89,8 +91,15 @@ export function resolveConversationPageEvent(data: unknown): ConversationPageEve
     if (!queryResult.success) return undefined;
     return resolveQueryResultEvent(queryResult.data);
   }
+  if (event.type === "message_start") {
+    if (readMessageRole(event) !== "assistant") return { kind: "handledNoop" };
+    return { kind: "activityMessageStart", event };
+  }
   if (HANDLED_NOOP_EVENT_TYPES.has(event.type)) {
     return { kind: "handledNoop" };
+  }
+  if (event.type === "agent_end") {
+    return { kind: "activityAgentEnd", event };
   }
   if (event.type === "message_update") {
     return { kind: "activityMessageUpdate", event };
@@ -110,6 +119,13 @@ function extractMessageArray(payload: z.infer<typeof MessagePayloadSchema>): unk
   const messageListPayload = MessageListPayloadSchema.safeParse(payload);
   if (messageListPayload.success) return messageListPayload.data.messages;
   return NestedMessageListPayloadSchema.parse(payload).data.messages;
+}
+
+function readMessageRole(event: Record<string, unknown>): string | undefined {
+  const message = RecordSchema.safeParse(event.message);
+  if (!message.success) return undefined;
+  const role = z.string().safeParse(message.data.role);
+  return role.success ? role.data : undefined;
 }
 
 function isToolExecutionEvent(type: string): type is ToolExecutionEventType {
