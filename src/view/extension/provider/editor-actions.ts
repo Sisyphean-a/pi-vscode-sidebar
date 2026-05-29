@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
-import { buildPromptReferencePayload, type PromptReferencePayload } from "../../editor-reference.ts";
+import {
+  buildPromptReferencePayload,
+  type PromptReferencePayload,
+} from "../../editor-reference.ts";
 
 export function buildActiveEditorPromptReferencePayload(): PromptReferencePayload | undefined {
   const editor = vscode.window.activeTextEditor;

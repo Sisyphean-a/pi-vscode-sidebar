@@ -16,18 +16,16 @@ describe("recent sessions panel", () => {
     harness.expectElement<HTMLButtonElement>(".recent-sessions-more", harness.sectionRoot).click();
     expect(harness.overlayRoot.querySelector(".recent-sessions-overlay")).not.toBeNull();
 
-    const dialogButtons = harness.overlayRoot.querySelectorAll<HTMLButtonElement>(
-      ".recent-session-item",
-    );
+    const dialogButtons =
+      harness.overlayRoot.querySelectorAll<HTMLButtonElement>(".recent-session-item");
     expect(dialogButtons).toHaveLength(4);
     dialogButtons[1]?.click();
     expect(harness.onSelect).not.toHaveBeenCalled();
     expect(harness.overlayRoot.querySelector(".recent-sessions-overlay")).toBeNull();
 
     harness.expectElement<HTMLButtonElement>(".recent-sessions-more", harness.sectionRoot).click();
-    const reopenedDialogButtons = harness.overlayRoot.querySelectorAll<HTMLButtonElement>(
-      ".recent-session-item",
-    );
+    const reopenedDialogButtons =
+      harness.overlayRoot.querySelectorAll<HTMLButtonElement>(".recent-session-item");
     reopenedDialogButtons[2]?.click();
     expect(harness.onSelect).toHaveBeenCalledWith("C:\\sessions\\session-3.jsonl");
     expect(harness.overlayRoot.querySelector(".recent-sessions-overlay")).toBeNull();

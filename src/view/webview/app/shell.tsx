@@ -74,8 +74,14 @@ export function createAppDom(root: HTMLElement): AppDom {
     },
     header: {
       newSessionButton: expectButtonRef(refs.newSessionButton, "new-session-button"),
-      recentSessionsOverlay: expectElementRef(refs.recentSessionsOverlay, "recent-sessions-overlay"),
-      recentSessionsSection: expectElementRef(refs.recentSessionsSection, "recent-sessions-section"),
+      recentSessionsOverlay: expectElementRef(
+        refs.recentSessionsOverlay,
+        "recent-sessions-overlay",
+      ),
+      recentSessionsSection: expectElementRef(
+        refs.recentSessionsSection,
+        "recent-sessions-section",
+      ),
     },
     root,
   };
@@ -228,7 +234,12 @@ export function SidebarAppShell(props: SidebarAppShellProps) {
           ref={props.refs.imageAttachmentList}
           class="image-attachment-list"
         ></div>
-        <textarea id="prompt-input" ref={props.refs.promptInput} rows={1} placeholder="继续提问"></textarea>
+        <textarea
+          id="prompt-input"
+          ref={props.refs.promptInput}
+          rows={1}
+          placeholder="继续提问"
+        ></textarea>
         <div id="command-result" ref={props.refs.commandResult} class="command-result" hidden></div>
         <div class="composer-toolbar">
           <div id="composer-meta" class="composer-meta">

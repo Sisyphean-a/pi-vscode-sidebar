@@ -40,7 +40,9 @@ describe("app event bindings", () => {
       handleMessageFeedScroll: vi.fn(),
       handlePromptPaste: vi.fn(),
       handleScrollToBottom: vi.fn(),
-      messageFeed: createMessageFeedEventPort(document.getElementById("message-feed") as HTMLElement),
+      messageFeed: createMessageFeedEventPort(
+        document.getElementById("message-feed") as HTMLElement,
+      ),
       newSessionButton: createClickEventPort(
         document.getElementById("new-session-button") as HTMLButtonElement,
       ),

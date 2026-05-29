@@ -46,7 +46,9 @@ interface ExtensionUiViewState {
   selectDraft: string;
 }
 
-export function createExtensionUiRenderer(options: ExtensionUiRendererOptions): ExtensionUiController {
+export function createExtensionUiRenderer(
+  options: ExtensionUiRendererOptions,
+): ExtensionUiController {
   let viewState: ExtensionUiViewState = {
     editorDraft: "",
     inputDraft: "",
@@ -141,7 +143,9 @@ export function createExtensionUiRenderer(options: ExtensionUiRendererOptions): 
 
   function showPanel(
     request: InteractiveRequest,
-    draftPatch: Partial<Pick<ExtensionUiViewState, "editorDraft" | "inputDraft" | "selectDraft">> = {},
+    draftPatch: Partial<
+      Pick<ExtensionUiViewState, "editorDraft" | "inputDraft" | "selectDraft">
+    > = {},
   ): void {
     updateViewState({ ...draftPatch, request });
   }
@@ -197,11 +201,7 @@ function ExtensionUiPanel(props: ExtensionUiPanelProps) {
           ))}
         </select>
         <div class="line">
-          <button
-            id="ext-submit"
-            type="button"
-            onClick={() => props.onConfirm(props.selectDraft)}
-          >
+          <button id="ext-submit" type="button" onClick={() => props.onConfirm(props.selectDraft)}>
             提交
           </button>
           <button id="ext-cancel" type="button" onClick={props.onCancel}>
@@ -248,11 +248,7 @@ function ExtensionUiPanel(props: ExtensionUiPanelProps) {
           }}
         />
         <div class="line">
-          <button
-            id="ext-submit"
-            type="button"
-            onClick={() => props.onConfirm(props.inputDraft)}
-          >
+          <button id="ext-submit" type="button" onClick={() => props.onConfirm(props.inputDraft)}>
             提交
           </button>
           <button id="ext-cancel" type="button" onClick={() => props.onConfirm(null)}>

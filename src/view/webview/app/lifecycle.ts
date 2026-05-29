@@ -1,7 +1,10 @@
 import type { ConversationPageFlow } from "../features/conversation/page-flow.ts";
 
 interface CreateAppLifecycleOptions {
-  conversationPage: Pick<ConversationPageFlow, "beginConversationReplay" | "startFreshConversation">;
+  conversationPage: Pick<
+    ConversationPageFlow,
+    "beginConversationReplay" | "startFreshConversation"
+  >;
   resetComposer(): void;
   syncStreamingChrome(isStreamingPhase: boolean): void;
 }

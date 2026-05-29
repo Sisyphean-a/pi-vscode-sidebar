@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import {
-  createCommandUiController,
-} from "../../../src/view/webview/features/command/ui.ts";
+import { createCommandUiController } from "../../../src/view/webview/features/command/ui.ts";
 import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("command ui controller", () => {

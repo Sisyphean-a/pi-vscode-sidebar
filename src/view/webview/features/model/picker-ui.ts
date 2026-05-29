@@ -2,11 +2,7 @@ import type { ThinkingLevel } from "../../../protocol.ts";
 import { createComposerPicker, type ComposerPicker } from "../composer/picker.ts";
 import { createPreactRenderPort } from "../../ui/preact-render-port.ts";
 import type { AvailableModel } from "./options.ts";
-import {
-  clampThinkingLevel,
-  formatLooseModelLabel,
-  formatThinkingLevelLabel,
-} from "./options.ts";
+import { clampThinkingLevel, formatLooseModelLabel, formatThinkingLevelLabel } from "./options.ts";
 
 export interface ModelPickerControls {
   modelPicker: ComposerPicker;

@@ -89,7 +89,10 @@ describe("conversation and activity rendering", () => {
 
     expect(messageContainer.textContent).toContain("hi");
     expect(messageContainer.textContent).toContain("已处理 0s");
-    expect(readDirectChildren(messageContainer)).toEqual(["chat-message role-user", "activity-slot"]);
+    expect(readDirectChildren(messageContainer)).toEqual([
+      "chat-message role-user",
+      "activity-slot",
+    ]);
 
     activityController.applyMessageUpdate({
       type: "message_update",

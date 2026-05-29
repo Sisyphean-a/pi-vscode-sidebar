@@ -1,9 +1,6 @@
 import { h } from "preact";
 import type { UiPendingImageAttachment } from "../../../protocol.ts";
-import {
-  handleImageAttachmentPaste,
-  type StorePastedImagePayload,
-} from "./paste.ts";
+import { handleImageAttachmentPaste, type StorePastedImagePayload } from "./paste.ts";
 import {
   addImageAttachments,
   clearImageAttachments,

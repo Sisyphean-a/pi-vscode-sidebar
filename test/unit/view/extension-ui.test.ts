@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import {
-  createExtensionUiRenderer,
-} from "../../../src/view/webview/features/extension-ui/panel.tsx";
+import { createExtensionUiRenderer } from "../../../src/view/webview/features/extension-ui/panel.tsx";
 import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("extension ui renderer", () => {

@@ -6,7 +6,10 @@ export interface DecodedHostStatePayload {
 }
 
 export type DecodedHostEventPayload =
-  | { kind: "query_result"; event: { type: "query_result"; command: string } & Record<string, unknown> }
+  | {
+      kind: "query_result";
+      event: { type: "query_result"; command: string } & Record<string, unknown>;
+    }
   | { kind: "thinking_level_changed"; level: string }
   | { kind: "other"; event: Record<string, unknown> };
 

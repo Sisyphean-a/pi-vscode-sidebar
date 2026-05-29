@@ -44,18 +44,17 @@ function insertTextAtSelection(options: CreatePromptReferenceEditorOptions, text
   const value = options.promptInput.getValue();
   const start = options.promptInput.getSelectionStart() ?? value.length;
   const end = options.promptInput.getSelectionEnd() ?? value.length;
-  const nextValue = [
-    value.slice(0, start),
-    text,
-    value.slice(end),
-  ].join("");
+  const nextValue = [value.slice(0, start), text, value.slice(end)].join("");
   options.promptInput.setValue(nextValue);
   const nextCursor = start + text.length;
   options.promptInput.setSelection(nextCursor, nextCursor);
   options.promptInput.syncHeight();
 }
 
-function buildPromptReferenceInsertion(promptInput: PromptReferenceInput, reference: string): string {
+function buildPromptReferenceInsertion(
+  promptInput: PromptReferenceInput,
+  reference: string,
+): string {
   const value = promptInput.getValue();
   const start = promptInput.getSelectionStart() ?? value.length;
   const end = promptInput.getSelectionEnd() ?? value.length;

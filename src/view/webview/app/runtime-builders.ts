@@ -7,13 +7,13 @@ import { createActivityController } from "../features/activity/controller.ts";
 import { createAppLifecycle, type AppLifecycle } from "./lifecycle.ts";
 import { bindAppEventBindings } from "./event-bindings.ts";
 import { createCommandPalette, type CommandPalette } from "../features/command/palette.ts";
-import {
-  createCommandUiController,
-  type CommandUiController,
-} from "../features/command/ui.ts";
+import { createCommandUiController, type CommandUiController } from "../features/command/ui.ts";
 import { createComposerActions, type ComposerActions } from "../features/composer/actions.ts";
 import { createConversationFeed } from "../features/conversation/feed.ts";
-import { createConversationPageFlow, type ConversationPageFlow } from "../features/conversation/page-flow.ts";
+import {
+  createConversationPageFlow,
+  type ConversationPageFlow,
+} from "../features/conversation/page-flow.ts";
 import {
   createExtensionUiRenderer,
   type ExtensionUiController,
@@ -22,17 +22,16 @@ import {
   createImageAttachmentController,
   type ImageAttachmentController,
 } from "../features/image-attachments/controller.ts";
-import { renderAssistantMarkdown, renderPlainTextWithReferences } from "../features/markdown/markdown.ts";
+import {
+  renderAssistantMarkdown,
+  renderPlainTextWithReferences,
+} from "../features/markdown/markdown.ts";
 import { createModelControls, type ModelControls } from "../features/model/controls.ts";
 import { createRecentSessionsPanel } from "../features/recent-sessions/panel.ts";
 import { createSidebarHostBridge } from "./runtime-host.ts";
 import type { HostMessageHandler } from "../host/message-handler.ts";
 import type { UiMessagePoster } from "../host/ui-message-poster.ts";
-import type {
-  DisabledPort,
-  RuntimeViewPorts,
-  SendButtonStreamingPort,
-} from "./view-ports.ts";
+import type { DisabledPort, RuntimeViewPorts, SendButtonStreamingPort } from "./view-ports.ts";
 
 export interface SidebarAppRuntime {
   appLifecycle: AppLifecycle;
@@ -370,11 +369,7 @@ function createSidebarComposerActions(
     },
     composerInput: context.viewPorts.composer.input,
     resolveCommandName(rawInput) {
-      return resolveSidebarCommandId(
-        rawInput,
-        context.locale,
-        context.dynamicSlashCommands,
-      );
+      return resolveSidebarCommandId(rawInput, context.locale, context.dynamicSlashCommands);
     },
   });
 }

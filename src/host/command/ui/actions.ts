@@ -9,10 +9,7 @@ import {
   readTreeCommandUiItems,
 } from "./readers.ts";
 import { toSessionCommandUiItem } from "./helpers.ts";
-import type {
-  PendingCommandUiKind,
-  PendingCommandUiRequest,
-} from "./state.ts";
+import type { PendingCommandUiKind, PendingCommandUiRequest } from "./state.ts";
 
 export type ControllerPhase = "idle" | "streaming" | "awaiting_extension_ui" | "process_dead";
 
