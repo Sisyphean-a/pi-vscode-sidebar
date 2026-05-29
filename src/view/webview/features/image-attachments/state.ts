@@ -27,9 +27,11 @@ export function removeImageAttachment(
   state: ImageAttachmentState,
   attachmentId: string,
 ): ImageAttachmentState {
+  const nextPending = state.pending.filter((attachment) => attachment.id !== attachmentId);
+  if (nextPending.length === state.pending.length) return state;
   return {
     ...state,
-    pending: state.pending.filter((attachment) => attachment.id !== attachmentId),
+    pending: nextPending,
   };
 }
 

@@ -79,6 +79,8 @@ export function syncConversationContent(
   return state.hasResolvedConversationState && !hasConversationContent;
 }
 
-export function syncNearBottom(state: ConversationPageState, isNearBottom: boolean): void {
+export function syncNearBottom(state: ConversationPageState, isNearBottom: boolean): boolean {
+  if (state.shouldAutoScroll === isNearBottom) return false;
   state.shouldAutoScroll = isNearBottom;
+  return true;
 }

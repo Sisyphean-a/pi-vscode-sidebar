@@ -1,4 +1,3 @@
-import { effect, signal } from "@preact/signals";
 import type { SidebarCommandDefinition } from "../../../../shared/sidebar-commands.ts";
 import type { UiPendingImageAttachment } from "../../../protocol.ts";
 import type { ActivityController } from "../activity/controller.ts";
@@ -31,13 +30,14 @@ interface ConversationPageViewState {
 interface CreateConversationPageFlowOptions {
   activityController: ActivityController;
   conversationFeed: ConversationFeed;
-  extensionUiPanel: HTMLElement;
-  messageFeed: HTMLElement;
+  isExtensionUiVisible(): boolean;
   onDynamicCommandsChange(commands: SidebarCommandDefinition[]): void;
   onOpenFileReference(path: string, startLine: number, endLine?: number): void;
   onStreamingPhaseChange(isStreaming: boolean): void;
   recentSessionsPanel: RecentSessionsPanel;
-  scrollToBottomButton: HTMLButtonElement;
+  resetExtensionUi(): void;
+  setScrollToBottomVisible(visible: boolean): void;
+  viewport: ConversationViewport;
 }
 
 export interface ConversationPageFlow {
@@ -55,25 +55,28 @@ export interface ConversationPageFlow {
   syncRecentSessionsVisibility(): void;
 }
 
+interface ConversationViewport {
+  getChildElementCount(): number;
+  isNearBottom(): boolean;
+  scrollToBottom(): void;
+}
+
 export function createConversationPageFlow(
   options: CreateConversationPageFlowOptions,
 ): ConversationPageFlow {
   const state = createConversationPageState();
-  const viewStateSignal = signal(
-    createConversationPageViewState(state, options.messageFeed, options.extensionUiPanel),
-  );
+  let viewState = createConversationPageViewState(state, options);
   let shouldSyncStreamingPhase = false;
-
-  effect(() => {
-    const viewState = viewStateSignal.value;
+  const syncViewState = () => {
     if (shouldSyncStreamingPhase) {
       options.onStreamingPhaseChange(viewState.isStreamingPhase);
     } else {
       shouldSyncStreamingPhase = true;
     }
     options.recentSessionsPanel.setVisible(viewState.showRecentSessions);
-    options.scrollToBottomButton.classList.toggle("hidden", !viewState.showScrollToBottomButton);
-  });
+    options.setScrollToBottomVisible(viewState.showScrollToBottomButton);
+  };
+  syncViewState();
 
   return {
     appendInlineNote(message) {
@@ -128,7 +131,8 @@ export function createConversationPageFlow(
       handleConversationPageFeedClick(event, event.target, options.onOpenFileReference);
     },
     handleMessageFeedScroll() {
-      syncNearBottom(state, isNearBottom(options.messageFeed));
+      const changed = syncNearBottom(state, options.viewport.isNearBottom());
+      if (!changed) return;
       refreshViewState();
     },
     scrollToBottom,
@@ -153,7 +157,7 @@ export function createConversationPageFlow(
   function resetConversationView(): void {
     options.conversationFeed.reset();
     options.activityController.reset();
-    options.extensionUiPanel.classList.add("hidden");
+    options.resetExtensionUi();
     resetConversationViewState(state);
     refreshViewState();
   }
@@ -161,9 +165,9 @@ export function createConversationPageFlow(
   function scrollToBottom(force = false): void {
     scrollConversationFeedToBottom({
       force,
-      messageFeed: options.messageFeed,
       shouldScroll: shouldScrollToBottom(state, force),
       updateScrollToBottomButton,
+      viewport: options.viewport,
     });
   }
 
@@ -176,34 +180,40 @@ export function createConversationPageFlow(
   }
 
   function refreshViewState(): void {
-    viewStateSignal.value = createConversationPageViewState(
-      state,
-      options.messageFeed,
-      options.extensionUiPanel,
-    );
+    const nextViewState = createConversationPageViewState(state, options);
+    if (isConversationPageViewStateEqual(viewState, nextViewState)) return;
+    viewState = nextViewState;
+    syncViewState();
   }
+}
+
+function isConversationPageViewStateEqual(
+  left: ConversationPageViewState,
+  right: ConversationPageViewState,
+): boolean {
+  return (
+    left.isStreamingPhase === right.isStreamingPhase &&
+    left.showRecentSessions === right.showRecentSessions &&
+    left.showScrollToBottomButton === right.showScrollToBottomButton
+  );
 }
 
 function createConversationPageViewState(
   state: ReturnType<typeof createConversationPageState>,
-  messageFeed: HTMLElement,
-  extensionUiPanel: HTMLElement,
+  options: Pick<CreateConversationPageFlowOptions, "isExtensionUiVisible" | "viewport">,
 ): ConversationPageViewState {
   return {
     isStreamingPhase: state.isStreamingPhase,
-    showRecentSessions: syncConversationContent(
-      state,
-      hasConversationContent(messageFeed, extensionUiPanel),
-    ),
+    showRecentSessions: syncConversationContent(state, hasConversationContent(options)),
     showScrollToBottomButton: shouldShowScrollToBottomButton(state),
   };
 }
 
 interface ScrollConversationFeedToBottomOptions {
   force: boolean;
-  messageFeed: HTMLElement;
   shouldScroll: boolean;
   updateScrollToBottomButton(): void;
+  viewport: ConversationViewport;
 }
 
 function handleConversationPageFeedClick(
@@ -226,14 +236,12 @@ function scrollConversationFeedToBottom(options: ScrollConversationFeedToBottomO
     options.updateScrollToBottomButton();
     return;
   }
-  options.messageFeed.scrollTop = options.messageFeed.scrollHeight;
+  options.viewport.scrollToBottom();
   options.updateScrollToBottomButton();
 }
 
-function hasConversationContent(messageFeed: HTMLElement, extensionUiPanel: HTMLElement): boolean {
-  return messageFeed.childElementCount > 0 || !extensionUiPanel.classList.contains("hidden");
-}
-
-function isNearBottom(messageFeed: HTMLElement): boolean {
-  return messageFeed.scrollHeight - messageFeed.scrollTop - messageFeed.clientHeight <= 16;
+function hasConversationContent(
+  options: Pick<CreateConversationPageFlowOptions, "isExtensionUiVisible" | "viewport">,
+): boolean {
+  return options.viewport.getChildElementCount() > 0 || options.isExtensionUiVisible();
 }

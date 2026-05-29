@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { createCommandUiController } from "../../../src/view/webview/features/command/ui.ts";
+import {
+  createCommandUiController,
+} from "../../../src/view/webview/features/command/ui.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("command ui controller", () => {
   it("submits selected item payload", () => {
@@ -16,7 +19,7 @@ describe("command ui controller", () => {
       ],
     });
 
-    const buttons = harness.list.querySelectorAll<HTMLButtonElement>(".command-ui-item");
+    const buttons = harness.panel.querySelectorAll<HTMLButtonElement>(".command-ui-item");
     buttons[1]?.click();
     expect(harness.postResponse).toHaveBeenCalledWith("req-1", { selectedId: "item-2" });
   });
@@ -27,11 +30,11 @@ describe("command ui controller", () => {
 
     await controller.applyResult({ status: "success", message: "Done" });
     expect(harness.result.dataset.status).toBe("success");
-    expect(harness.result.classList.contains("hidden")).toBe(false);
+    expect(harness.result.hidden).toBe(false);
 
     controller.clearResult();
     expect(harness.result.dataset.status).toBeUndefined();
-    expect(harness.result.classList.contains("hidden")).toBe(true);
+    expect(harness.result.hidden).toBe(true);
   });
 
   it("hides panel and clears list entries when request is resolved", () => {
@@ -42,35 +45,46 @@ describe("command ui controller", () => {
       kind: "session_list",
       items: [{ id: "item-1", label: "Item 1" }],
     });
-    expect(harness.list.querySelectorAll(".command-ui-item")).toHaveLength(1);
+    expect(harness.panel.querySelectorAll(".command-ui-item")).toHaveLength(1);
 
     controller.handleKeydown(createKeydownEvent("Enter"));
 
-    expect(harness.panel.classList.contains("hidden")).toBe(true);
-    expect(harness.list.querySelectorAll(".command-ui-item")).toHaveLength(0);
+    expect(harness.panel.querySelectorAll(".command-ui-panel")).toHaveLength(0);
+    expect(harness.panel.querySelectorAll(".command-ui-item")).toHaveLength(0);
   });
 });
 
 function createHarness() {
   const panel = document.createElement("section");
-  const list = document.createElement("div");
   const result = document.createElement("div");
-  result.className = "hidden";
-  panel.append(list);
+  result.hidden = true;
   document.body.append(panel, result);
   const postResponse = vi.fn();
   return {
-    list,
     panel,
     postResponse,
     result,
     options: {
-      panel,
-      list,
-      result,
+      result: createCommandResultPort(result),
+      view: createPreactRenderPort(panel),
       focusComposer() {},
       postResponse,
       setComposerValue() {},
+    },
+  };
+}
+
+function createCommandResultPort(result: HTMLElement) {
+  return {
+    clear() {
+      result.textContent = "";
+      result.hidden = true;
+      delete result.dataset.status;
+    },
+    show(next: { message?: string; status: "success" | "error" }) {
+      result.textContent = next.message ?? "";
+      result.dataset.status = next.status;
+      result.hidden = !next.message;
     },
   };
 }

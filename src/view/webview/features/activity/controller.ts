@@ -17,12 +17,13 @@ import {
 } from "./controller-state.ts";
 import { createActivityTranscript, type ActivityTranscript } from "./transcript.ts";
 import type { ConversationFeed } from "../conversation/feed.ts";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
 
 interface CreateActivityControllerOptions {
-  container: HTMLElement;
+  view: PreactRenderPort;
   conversationFeed: ConversationFeed;
   onChange(): void;
-  resolveContainer?(): HTMLElement | null | undefined;
+  resolveView?(): PreactRenderPort | undefined;
 }
 
 export interface ActivityController {
@@ -40,9 +41,9 @@ export function createActivityController(
   options: CreateActivityControllerOptions,
 ): ActivityController {
   const activityTranscript = createActivityTranscript({
-    container: resolveActivityContainer(options),
+    view: resolveActivityView(options),
     onChange: options.onChange,
-    resolveContainer: options.resolveContainer,
+    resolveView: options.resolveView,
   });
   const state = createActivityControllerState();
   const applyPlan = createActivityPlanApplier(state, activityTranscript, options.conversationFeed);
@@ -67,7 +68,7 @@ export function createActivityController(
     applyMessageStart(event) {
       if (!isAssistantMessageStartEvent(event) || processingStatus) return;
       options.conversationFeed.moveInlineActivitySlotToEnd();
-      resolveActivityContainer(options);
+      resolveActivityView(options);
       processingStatus = createProcessingStatus({
         now: () => Date.now(),
         onTick(message) {
@@ -97,10 +98,8 @@ export function createActivityController(
   };
 }
 
-function resolveActivityContainer(options: CreateActivityControllerOptions): HTMLElement {
-  const resolved = options.resolveContainer?.();
-  if (resolved) return resolved;
-  return options.container;
+function resolveActivityView(options: CreateActivityControllerOptions): PreactRenderPort {
+  return options.resolveView?.() ?? options.view;
 }
 
 function createActivityPlanApplier(

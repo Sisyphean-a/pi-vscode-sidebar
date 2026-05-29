@@ -4,12 +4,13 @@ import { createActivityController } from "../../../src/view/webview/features/act
 import { applyConversationReplayQueryResult } from "../../../src/view/webview/features/conversation/page-effects.ts";
 import { createConversationPageState } from "../../../src/view/webview/features/conversation/page-state.ts";
 import { createConversationFeed } from "../../../src/view/webview/features/conversation/feed.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("conversation and activity rendering", () => {
   it("hydrates replayed history messages without leaving an empty activity slot", () => {
     const messageContainer = document.createElement("section");
     const conversationFeed = createConversationFeed({
-      container: messageContainer,
+      view: createPreactRenderPort(messageContainer),
       onChange() {},
       renderAssistantMarkdown(text) {
         return text;
@@ -19,9 +20,9 @@ describe("conversation and activity rendering", () => {
       },
     });
     const activityController = createActivityController({
-      container: document.createElement("section"),
-      resolveContainer() {
-        return conversationFeed.findInlineActivitySlot();
+      view: createPreactRenderPort(document.createElement("section")),
+      resolveView() {
+        return conversationFeed.findInlineActivitySlotView();
       },
       conversationFeed,
       onChange: vi.fn(),
@@ -62,7 +63,7 @@ describe("conversation and activity rendering", () => {
   it("renders activity between the current user message and the assistant reply", () => {
     const messageContainer = document.createElement("section");
     const conversationFeed = createConversationFeed({
-      container: messageContainer,
+      view: createPreactRenderPort(messageContainer),
       onChange() {},
       renderAssistantMarkdown(text) {
         return text;
@@ -72,12 +73,9 @@ describe("conversation and activity rendering", () => {
       },
     });
     const activityController = createActivityController({
-      container: document.createElement("section"),
-      resolveContainer() {
-        return messageContainer.querySelector("[data-inline-activity-slot='true']") as
-          | HTMLElement
-          | null
-          | undefined;
+      view: createPreactRenderPort(document.createElement("section")),
+      resolveView() {
+        return conversationFeed.findInlineActivitySlotView();
       },
       conversationFeed,
       onChange: vi.fn(),

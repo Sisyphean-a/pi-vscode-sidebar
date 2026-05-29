@@ -4,6 +4,7 @@ import type { CommandUiController } from "../features/command/ui.ts";
 import type { ComposerActions } from "../features/composer/actions.ts";
 
 interface AppEventBindingsOptions {
+  composerInput: ComposerInputEventPort;
   commandPalette: Pick<CommandPalette, "update">;
   commandUi: Pick<CommandUiController, "clearResult" | "handleKeydown">;
   composerActions: ComposerActions;
@@ -13,18 +14,16 @@ interface AppEventBindingsOptions {
   handleMessageFeedScroll(): void;
   handlePromptPaste(event: ClipboardEvent | Event): Promise<void>;
   handleScrollToBottom(): void;
-  messageFeed: HTMLElement;
-  newSessionButton: HTMLButtonElement;
+  messageFeed: MessageFeedEventPort;
+  newSessionButton: ClickEventPort;
   onAbort(): void;
   onNewSession(): void;
-  promptInput: HTMLTextAreaElement;
-  scrollToBottomButton: HTMLButtonElement;
-  sendButton: HTMLButtonElement;
-  syncComposerHeight(input: HTMLTextAreaElement): void;
+  scrollToBottomButton: ClickEventPort;
+  sendButton: ClickEventPort;
 }
 
 export function bindAppEventBindings(options: AppEventBindingsOptions): void {
-  options.sendButton.addEventListener("click", () => {
+  options.sendButton.addClickListener(() => {
     if (options.getIsStreamingPhase()) {
       options.onAbort();
       return;
@@ -32,42 +31,42 @@ export function bindAppEventBindings(options: AppEventBindingsOptions): void {
     options.composerActions.sendPrompt();
   });
 
-  options.promptInput.addEventListener("input", () => {
-    options.syncComposerHeight(options.promptInput);
+  options.composerInput.addInputListener(() => {
+    options.composerInput.syncHeight();
     options.commandUi.clearResult();
-    options.commandPalette.update(options.promptInput.value);
+    options.commandPalette.update(options.composerInput.getValue());
   });
 
-  options.promptInput.addEventListener("paste", (event) => {
+  options.composerInput.addPasteListener((event) => {
     void options.handlePromptPaste(event);
   });
 
-  options.messageFeed.addEventListener("click", (event) => {
+  options.messageFeed.addClickListener((event) => {
     options.handleMessageFeedClick(event);
   });
 
-  options.messageFeed.addEventListener("scroll", () => {
+  options.messageFeed.addScrollListener(() => {
     options.handleMessageFeedScroll();
   });
 
-  options.scrollToBottomButton.addEventListener("click", () => {
+  options.scrollToBottomButton.addClickListener(() => {
     options.handleScrollToBottom();
   });
 
-  options.promptInput.addEventListener("keydown", (event) => {
+  options.composerInput.addKeydownListener((event) => {
     if (event.isComposing || event.key === "Process") return;
     if (options.commandUi.handleKeydown(event)) return;
     if (options.composerActions.handleCommandPaletteKeydown(event)) return;
     if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
-    if (options.composerActions.shouldSubmitCommand(options.promptInput.value)) {
+    if (options.composerActions.shouldSubmitCommand(options.composerInput.getValue())) {
       options.composerActions.submitCommand();
       return;
     }
     options.composerActions.sendPrompt();
   });
 
-  options.newSessionButton.addEventListener("click", () => {
+  options.newSessionButton.addClickListener(() => {
     options.onNewSession();
   });
 
@@ -76,4 +75,21 @@ export function bindAppEventBindings(options: AppEventBindingsOptions): void {
     if (!message) return;
     options.handleHostMessage(message);
   });
+}
+
+interface ClickEventPort {
+  addClickListener(listener: () => void): void;
+}
+
+interface ComposerInputEventPort {
+  addInputListener(listener: () => void): void;
+  addKeydownListener(listener: (event: KeyboardEvent) => void): void;
+  addPasteListener(listener: (event: ClipboardEvent | Event) => void): void;
+  getValue(): string;
+  syncHeight(): void;
+}
+
+interface MessageFeedEventPort {
+  addClickListener(listener: (event: MouseEvent) => void): void;
+  addScrollListener(listener: () => void): void;
 }

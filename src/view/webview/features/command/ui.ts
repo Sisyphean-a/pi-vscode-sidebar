@@ -1,5 +1,5 @@
 import type { CommandResult, CommandUiRequest } from "../../../protocol.ts";
-import { h, render } from "preact";
+import { h } from "preact";
 import { resolveCommandUiKeyAction } from "./ui-actions.ts";
 import {
   clearCommandUiState,
@@ -7,11 +7,12 @@ import {
   readCommandUiSelectionPayload,
   setCommandUiRequest,
 } from "./ui-state.ts";
+import type { CommandResultPort } from "../../app/view-ports.ts";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
 
 interface CommandUiOptions {
-  panel: HTMLElement;
-  list: HTMLElement;
-  result: HTMLElement;
+  result: CommandResultPort;
+  view: PreactRenderPort;
   focusComposer(): void;
   postResponse(requestId: string, payload: unknown): void;
   setComposerValue(value: string): void;
@@ -27,30 +28,36 @@ export interface CommandUiController {
 
 export function createCommandUiController(options: CommandUiOptions): CommandUiController {
   const state = createCommandUiState();
+  let renderedViewState: CommandUiViewState | undefined;
 
-  function hidePanel(): void {
+  const hidePanel = () => {
     clearCommandUiState(state);
-    hideCommandUiPanel(options.panel, options.list);
-  }
+    refreshView();
+  };
 
-  function postSelection(index: number): void {
+  const postSelection = (index: number) => {
     const selection = readCommandUiSelectionPayload(state, index);
     if (!selection) return;
     options.postResponse(selection.requestId, selection.payload);
     hidePanel();
-  }
+  };
 
-  function renderItems(): void {
-    const request = state.currentRequest;
-    if (!request) {
-      clearCommandUiItems(options.list);
-      return;
-    }
-    renderCommandUiItems(options.list, request.items, state.selectedIndex, (index) => {
-      state.selectedIndex = index;
-      postSelection(index);
-    });
-  }
+  const refreshView = () => {
+    const viewState = readCommandUiViewState(state, renderedViewState);
+    if (!viewState) return;
+    options.view.render(
+      h(CommandUiPanel, {
+        onSelect(index) {
+          state.selectedIndex = index;
+          postSelection(index);
+        },
+        request: viewState.request,
+        selectedIndex: viewState.selectedIndex,
+      }),
+    );
+    renderedViewState = viewState;
+  };
+  refreshView();
 
   return {
     async applyResult(result) {
@@ -61,18 +68,18 @@ export function createCommandUiController(options: CommandUiOptions): CommandUiC
       if (result.copyText) {
         await navigator.clipboard?.writeText(result.copyText);
       }
-      applyCommandUiResult(options.result, result);
+      options.result.show(result);
       hidePanel();
     },
     clearResult() {
-      clearCommandUiResult(options.result);
+      options.result.clear();
     },
     handleKeydown(event) {
       const action = resolveCommandUiKeyAction(state, event.key, event.shiftKey);
       if (action.type === "ignore") return false;
       event.preventDefault();
       if (action.type === "rerender") {
-        renderItems();
+        refreshView();
         return true;
       }
       if (action.type === "submit") {
@@ -87,52 +94,62 @@ export function createCommandUiController(options: CommandUiOptions): CommandUiC
       return true;
     },
     isVisible() {
-      return !!state.currentRequest && !options.panel.classList.contains("hidden");
+      const request = state.currentRequest;
+      return !!request && request.items.length > 0;
     },
     renderRequest(request) {
       setCommandUiRequest(state, request);
-      renderItems();
-      options.panel.classList.toggle("hidden", request.items.length === 0);
+      refreshView();
       this.clearResult();
       options.focusComposer();
     },
   };
 }
 
-function applyCommandUiResult(resultElement: HTMLElement, result: CommandResult): void {
-  resultElement.textContent = result.message ?? "";
-  resultElement.dataset.status = result.status;
-  resultElement.classList.toggle("hidden", !result.message);
+interface CommandUiViewState {
+  request: CommandUiRequest | undefined;
+  selectedIndex: number;
 }
 
-function clearCommandUiResult(resultElement: HTMLElement): void {
-  resultElement.textContent = "";
-  resultElement.classList.add("hidden");
-  delete resultElement.dataset.status;
+function readCommandUiViewState(
+  state: ReturnType<typeof createCommandUiState>,
+  previous: CommandUiViewState | undefined,
+): CommandUiViewState | undefined {
+  const nextViewState: CommandUiViewState = {
+    request: state.currentRequest,
+    selectedIndex: state.selectedIndex,
+  };
+  if (
+    previous &&
+    previous.request === nextViewState.request &&
+    previous.selectedIndex === nextViewState.selectedIndex
+  ) {
+    return undefined;
+  }
+  return nextViewState;
 }
 
-function clearCommandUiItems(list: HTMLElement): void {
-  render(null, list);
+interface CommandUiPanelProps {
+  onSelect(index: number): void;
+  request: CommandUiRequest | undefined;
+  selectedIndex: number;
 }
 
-function hideCommandUiPanel(panel: HTMLElement, list: HTMLElement): void {
-  panel.classList.add("hidden");
-  clearCommandUiItems(list);
-}
-
-function renderCommandUiItems(
-  list: HTMLElement,
-  items: ReadonlyArray<CommandUiRequest["items"][number]>,
-  selectedIndex: number,
-  onSelect: (index: number) => void,
-): void {
-  render(
-    h(CommandUiItemList, {
-      items,
-      onSelect,
-      selectedIndex,
-    }),
-    list,
+function CommandUiPanel(props: CommandUiPanelProps) {
+  const request = props.request;
+  if (!request || request.items.length === 0) return null;
+  return h(
+    "div",
+    { class: "command-ui-panel" },
+    h(
+      "div",
+      { class: "command-ui-list" },
+      h(CommandUiItemList, {
+        items: request.items,
+        onSelect: props.onSelect,
+        selectedIndex: props.selectedIndex,
+      }),
+    ),
   );
 }
 

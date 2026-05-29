@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createImageAttachmentController } from "../../../src/view/webview/features/image-attachments/controller.ts";
 import type { UiPendingImageAttachment } from "../../../src/view/protocol.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("image attachments controller", () => {
   it("syncs button state, renders cards, and handles removal", () => {
@@ -12,8 +13,8 @@ describe("image attachments controller", () => {
     const onUnsupportedInput = vi.fn();
     const onStorePastedImage = vi.fn();
     const controller = createImageAttachmentController({
-      button,
-      list,
+      button: createButtonPort(button),
+      listView: createPreactRenderPort(list),
       onRequestPick,
       onStorePastedImage,
       onUnsupportedInput,
@@ -25,7 +26,6 @@ describe("image attachments controller", () => {
     });
 
     expect(button.disabled).toBe(false);
-    expect(list.classList.contains("hidden")).toBe(false);
     const cards = list.querySelectorAll(".composer-image-attachment");
     expect(cards).toHaveLength(2);
     const removeButtons = list.querySelectorAll<HTMLButtonElement>(".composer-image-remove");
@@ -37,15 +37,15 @@ describe("image attachments controller", () => {
     const button = document.createElement("button");
     const list = document.createElement("div");
     createImageAttachmentController({
-      button,
-      list,
+      button: createButtonPort(button),
+      listView: createPreactRenderPort(list),
       onRequestPick() {},
       onStorePastedImage() {},
       onUnsupportedInput() {},
     });
 
     expect(button.disabled).toBe(true);
-    expect(list.classList.contains("hidden")).toBe(true);
+    expect(list.childElementCount).toBe(0);
     expect(list.querySelectorAll(".composer-image-attachment")).toHaveLength(0);
   });
 
@@ -56,8 +56,8 @@ describe("image attachments controller", () => {
     const onUnsupportedInput = vi.fn();
     const onStorePastedImage = vi.fn();
     const controller = createImageAttachmentController({
-      button,
-      list,
+      button: createButtonPort(button),
+      listView: createPreactRenderPort(list),
       onRequestPick,
       onStorePastedImage,
       onUnsupportedInput,
@@ -96,5 +96,16 @@ function createAttachment(id: string): UiPendingImageAttachment {
     image: { type: "image", data: "AAAA", mimeType: "image/png" },
     name: `${id}.png`,
     previewUrl: `blob:${id}`,
+  };
+}
+
+function createButtonPort(button: HTMLButtonElement) {
+  return {
+    addClickListener(listener: () => void) {
+      button.addEventListener("click", listener);
+    },
+    setDisabled(disabled: boolean) {
+      button.disabled = disabled;
+    },
   };
 }

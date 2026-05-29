@@ -1,5 +1,4 @@
-import { effect, signal } from "@preact/signals";
-import { h, render } from "preact";
+import { h } from "preact";
 import type { UiPendingImageAttachment } from "../../../protocol.ts";
 import {
   handleImageAttachmentPaste,
@@ -13,13 +12,19 @@ import {
   setImageAttachmentSupported,
   type ImageAttachmentState,
 } from "./state.ts";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
 
 interface ImageAttachmentControllerOptions {
-  button: HTMLButtonElement;
-  list: HTMLElement;
+  button: ImageAttachmentButtonPort;
+  listView: PreactRenderPort;
   onRequestPick(): void;
   onStorePastedImage(payload: StorePastedImagePayload): void;
   onUnsupportedInput(): void;
+}
+
+interface ImageAttachmentButtonPort {
+  addClickListener(listener: () => void): void;
+  setDisabled(disabled: boolean): void;
 }
 
 export interface ImageAttachmentController {
@@ -35,16 +40,20 @@ export interface ImageAttachmentController {
 export function createImageAttachmentController(
   options: ImageAttachmentControllerOptions,
 ): ImageAttachmentController {
-  const stateSignal = signal(createImageAttachmentState());
+  let state = createImageAttachmentState();
+  const updateState = (nextState: ImageAttachmentState) => {
+    if (nextState === state) return;
+    state = nextState;
+    sync();
+  };
 
-  effect(() => {
-    const state = stateSignal.value;
+  const sync = () => {
     syncImageAttachmentUi(
       {
         button: options.button,
-        list: options.list,
+        listView: options.listView,
         onRemoveAttachment(id) {
-          stateSignal.value = removeImageAttachment(stateSignal.value, id);
+          updateState(removeImageAttachment(state, id));
         },
       },
       {
@@ -52,38 +61,39 @@ export function createImageAttachmentController(
         supported: state.supported,
       },
     );
-  });
+  };
+  sync();
 
-  options.button.addEventListener("click", () => {
-    handlePickClick(options, stateSignal.value);
+  options.button.addClickListener(() => {
+    handlePickClick(options, state);
   });
 
   return {
     applyAdded(data) {
-      stateSignal.value = addImageAttachments(stateSignal.value, data.attachments);
+      updateState(addImageAttachments(state, data.attachments));
     },
     clear() {
-      stateSignal.value = clearImageAttachments(stateSignal.value);
+      updateState(clearImageAttachments(state));
     },
     getPending() {
-      return [...stateSignal.value.pending];
+      return [...state.pending];
     },
     async handlePaste(event) {
       await handleImageAttachmentPaste({
         event,
         onStorePastedImage: options.onStorePastedImage,
         onUnsupportedInput: options.onUnsupportedInput,
-        supported: stateSignal.value.supported,
+        supported: state.supported,
       });
     },
     hasPending() {
-      return stateSignal.value.pending.length > 0;
+      return state.pending.length > 0;
     },
     setSupported(supported) {
-      stateSignal.value = setImageAttachmentSupported(stateSignal.value, supported);
+      updateState(setImageAttachmentSupported(state, supported));
     },
     supportsInput() {
-      return stateSignal.value.supported;
+      return state.supported;
     },
   };
 }
@@ -100,8 +110,8 @@ function handlePickClick(
 }
 
 interface ImageAttachmentDomOptions {
-  button: HTMLButtonElement;
-  list: HTMLElement;
+  button: ImageAttachmentButtonPort;
+  listView: PreactRenderPort;
   onRemoveAttachment(id: string): void;
 }
 
@@ -114,14 +124,12 @@ function syncImageAttachmentUi(
   options: ImageAttachmentDomOptions,
   state: ImageAttachmentDomState,
 ): void {
-  options.button.disabled = !state.supported;
-  options.list.classList.toggle("hidden", state.pending.length === 0);
-  render(
+  options.button.setDisabled(!state.supported);
+  options.listView.render(
     h(ImageAttachmentCardList, {
       onRemoveAttachment: options.onRemoveAttachment,
       pending: state.pending,
     }),
-    options.list,
   );
 }
 
@@ -131,6 +139,7 @@ interface ImageAttachmentCardListProps {
 }
 
 function ImageAttachmentCardList(props: ImageAttachmentCardListProps) {
+  if (props.pending.length === 0) return null;
   return props.pending.map((attachment) =>
     h(
       "article",

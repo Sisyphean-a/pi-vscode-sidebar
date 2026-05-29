@@ -1,8 +1,17 @@
 import { z } from "zod";
 
 interface CreatePromptReferenceEditorOptions {
-  promptInput: HTMLTextAreaElement;
-  syncComposerHeight(input: HTMLTextAreaElement): void;
+  promptInput: PromptReferenceInput;
+}
+
+export interface PromptReferenceInput {
+  focus(): void;
+  getSelectionEnd(): number | null;
+  getSelectionStart(): number | null;
+  getValue(): string;
+  setSelection(start: number, end: number): void;
+  setValue(value: string): void;
+  syncHeight(): void;
 }
 
 export interface PromptReferenceEditor {
@@ -32,27 +41,26 @@ export function createPromptReferenceEditor(
 }
 
 function insertTextAtSelection(options: CreatePromptReferenceEditorOptions, text: string): void {
-  const start = options.promptInput.selectionStart ?? options.promptInput.value.length;
-  const end = options.promptInput.selectionEnd ?? options.promptInput.value.length;
-  options.promptInput.value = [
-    options.promptInput.value.slice(0, start),
+  const value = options.promptInput.getValue();
+  const start = options.promptInput.getSelectionStart() ?? value.length;
+  const end = options.promptInput.getSelectionEnd() ?? value.length;
+  const nextValue = [
+    value.slice(0, start),
     text,
-    options.promptInput.value.slice(end),
+    value.slice(end),
   ].join("");
+  options.promptInput.setValue(nextValue);
   const nextCursor = start + text.length;
-  options.promptInput.selectionStart = nextCursor;
-  options.promptInput.selectionEnd = nextCursor;
-  options.syncComposerHeight(options.promptInput);
+  options.promptInput.setSelection(nextCursor, nextCursor);
+  options.promptInput.syncHeight();
 }
 
-function buildPromptReferenceInsertion(
-  promptInput: HTMLTextAreaElement,
-  reference: string,
-): string {
-  const start = promptInput.selectionStart ?? promptInput.value.length;
-  const end = promptInput.selectionEnd ?? promptInput.value.length;
-  const before = promptInput.value.slice(0, start);
-  const after = promptInput.value.slice(end);
+function buildPromptReferenceInsertion(promptInput: PromptReferenceInput, reference: string): string {
+  const value = promptInput.getValue();
+  const start = promptInput.getSelectionStart() ?? value.length;
+  const end = promptInput.getSelectionEnd() ?? value.length;
+  const before = value.slice(0, start);
+  const after = value.slice(end);
   const prefix = shouldInsertLeadingSpace(before) ? " " : "";
   const suffix = shouldInsertTrailingSpace(after) ? " " : "";
   return `${prefix}${reference}${suffix}`;

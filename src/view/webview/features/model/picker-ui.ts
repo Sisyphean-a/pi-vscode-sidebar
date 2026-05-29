@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "../../../protocol.ts";
 import { createComposerPicker, type ComposerPicker } from "../composer/picker.ts";
+import { createPreactRenderPort } from "../../ui/preact-render-port.ts";
 import type { AvailableModel } from "./options.ts";
 import {
   clampThinkingLevel,
@@ -12,8 +13,16 @@ export interface ModelPickerControls {
   thinkingLevelPicker: ComposerPicker;
 }
 
+interface ComposerPickerElements {
+  list: HTMLElement;
+  panel: HTMLElement;
+  root: HTMLElement;
+  trigger: HTMLButtonElement;
+}
+
 interface CreateModelPickerControlsOptions {
-  expectElement<TElement extends HTMLElement>(id: string): TElement;
+  modelPicker: ComposerPickerElements;
+  thinkingLevelPicker: ComposerPickerElements;
   onModelChange(value: string): void;
   onThinkingLevelChange(value: string): void;
 }
@@ -31,19 +40,19 @@ export function createModelPickerControls(
 ): ModelPickerControls {
   return {
     modelPicker: createComposerPicker({
-      root: options.expectElement<HTMLElement>("model-picker"),
-      trigger: options.expectElement<HTMLButtonElement>("model-picker-trigger"),
-      panel: options.expectElement<HTMLElement>("model-picker-panel"),
-      list: options.expectElement<HTMLElement>("model-picker-list"),
+      optionListView: createPreactRenderPort(options.modelPicker.list),
+      panel: options.modelPicker.panel,
+      root: options.modelPicker.root,
+      trigger: options.modelPicker.trigger,
       onChange(value) {
         options.onModelChange(value);
       },
     }),
     thinkingLevelPicker: createComposerPicker({
-      root: options.expectElement<HTMLElement>("thinking-level-picker"),
-      trigger: options.expectElement<HTMLButtonElement>("thinking-level-picker-trigger"),
-      panel: options.expectElement<HTMLElement>("thinking-level-picker-panel"),
-      list: options.expectElement<HTMLElement>("thinking-level-picker-list"),
+      optionListView: createPreactRenderPort(options.thinkingLevelPicker.list),
+      panel: options.thinkingLevelPicker.panel,
+      root: options.thinkingLevelPicker.root,
+      trigger: options.thinkingLevelPicker.trigger,
       onChange(value) {
         options.onThinkingLevelChange(value);
       },

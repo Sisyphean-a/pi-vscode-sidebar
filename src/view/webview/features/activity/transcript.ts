@@ -1,5 +1,5 @@
-import { effect, signal } from "@preact/signals";
-import { h, render } from "preact";
+import { h } from "preact";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
 import {
   createActivityTranscriptState,
   finalizeActivityGroup,
@@ -25,9 +25,9 @@ export interface ActivityTranscript {
 }
 
 interface ActivityTranscriptOptions {
-  container: HTMLElement;
+  view: PreactRenderPort;
   onChange?(): void;
-  resolveContainer?(): HTMLElement | null | undefined;
+  resolveView?(): PreactRenderPort | undefined;
 }
 
 interface ActivityTranscriptNoteState {
@@ -67,14 +67,13 @@ export function createActivityTranscript(options: ActivityTranscriptOptions): Ac
   const noteMessagesByKey = new Map<string, string>();
   const blockOrder: ActivityTranscriptBlockOrderItem[] = [];
   const groupBlockKeys = new Set<string>();
-  const viewStateSignal = signal<ActivityTranscriptViewState>({ blocks: [] });
-
-  effect(() => {
-    render(
-      h(ActivityTranscriptBlocks, { viewState: viewStateSignal.value }),
-      options.resolveContainer?.() ?? options.container,
-    );
-  });
+  let viewState: ActivityTranscriptViewState = { blocks: [] };
+  let renderedViewState: ActivityTranscriptViewState | undefined;
+  const renderView = () => {
+    const view = options.resolveView?.() ?? options.view;
+    view.render(h(ActivityTranscriptBlocks, { viewState }));
+  };
+  renderView();
 
   return {
     record(update) {
@@ -143,7 +142,11 @@ export function createActivityTranscript(options: ActivityTranscriptOptions): Ac
   }
 
   function refreshViewState(): void {
-    viewStateSignal.value = buildViewState(state, noteMessagesByKey, blockOrder);
+    const nextViewState = buildViewState(state, noteMessagesByKey, blockOrder);
+    if (isActivityTranscriptViewStateEqual(renderedViewState, nextViewState)) return;
+    viewState = nextViewState;
+    renderedViewState = nextViewState;
+    renderView();
   }
 }
 
@@ -262,4 +265,74 @@ function renderActivityEntryBody(entry: ActivityEntryViewState) {
     { class: "chat-activity-item-body" },
     h("span", { class: "chat-activity-item-label" }, entry.label),
   );
+}
+
+function isActivityTranscriptViewStateEqual(
+  left: ActivityTranscriptViewState | undefined,
+  right: ActivityTranscriptViewState,
+): boolean {
+  if (!left) return false;
+  return isActivityTranscriptBlockListEqual(left.blocks, right.blocks);
+}
+
+function isActivityTranscriptBlockListEqual(
+  left: readonly ActivityTranscriptViewBlock[],
+  right: readonly ActivityTranscriptViewBlock[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftBlock = left[index];
+    const rightBlock = right[index];
+    if (!leftBlock || !rightBlock) return false;
+    if (leftBlock.kind !== rightBlock.kind) return false;
+    if (leftBlock.kind === "note" && rightBlock.kind === "note") {
+      if (
+        leftBlock.note.key !== rightBlock.note.key ||
+        leftBlock.note.message !== rightBlock.note.message
+      ) {
+        return false;
+      }
+      continue;
+    }
+    if (leftBlock.kind === "group" && rightBlock.kind === "group") {
+      if (!isActivityGroupViewStateEqual(leftBlock.group, rightBlock.group)) return false;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+function isActivityGroupViewStateEqual(
+  left: ActivityGroupViewState,
+  right: ActivityGroupViewState,
+): boolean {
+  return (
+    left.groupKey === right.groupKey &&
+    left.summaryText === right.summaryText &&
+    left.collapsed === right.collapsed &&
+    isActivityEntryViewStateListEqual(left.entries, right.entries)
+  );
+}
+
+function isActivityEntryViewStateListEqual(
+  left: readonly ActivityEntryViewState[],
+  right: readonly ActivityEntryViewState[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftEntry = left[index];
+    const rightEntry = right[index];
+    if (!leftEntry || !rightEntry) return false;
+    if (
+      leftEntry.entryKey !== rightEntry.entryKey ||
+      leftEntry.label !== rightEntry.label ||
+      leftEntry.status !== rightEntry.status ||
+      leftEntry.detail !== rightEntry.detail ||
+      leftEntry.detailSummary !== rightEntry.detailSummary
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

@@ -261,6 +261,18 @@ textarea {
   background: color-mix(in srgb, var(--vscode-errorForeground) 22%, transparent);
 }
 
+.send-action-icon {
+  display: none;
+}
+
+.send-action[data-mode="send"] .send-action-icon-send {
+  display: block;
+}
+
+.send-action[data-mode="stop"] .send-action-icon-stop {
+  display: block;
+}
+
 .conversation {
   flex: 1;
   min-height: 0;
@@ -578,7 +590,7 @@ textarea {
   gap: 10px;
 }
 
-.image-attachment-list.hidden {
+.image-attachment-list:empty {
   display: none;
 }
 

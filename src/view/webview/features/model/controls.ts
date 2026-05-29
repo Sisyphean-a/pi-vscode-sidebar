@@ -10,27 +10,23 @@ import {
   type ModelControlQueryResultEvent,
   type ModelControlState,
 } from "./control-state.ts";
-import { getRenderState } from "./control-render.ts";
+import { getRenderState, type ModelControlRenderState } from "./control-render.ts";
 import {
-  createModelPickerControls,
   renderModelPicker as renderModelPickerUi,
   renderThinkingLevelPicker as renderThinkingLevelPickerUi,
   type ModelPickerControls,
 } from "./picker-ui.ts";
 
 interface ModelControlsOptions {
-  expectElement<TElement extends HTMLElement>(id: string): TElement;
+  createPickerControls(handlers: {
+    onModelChange(value: string): void;
+    onThinkingLevelChange(value: string): void;
+  }): ModelPickerControls;
   onImageSupportChange(supported: boolean): void;
   onInlineNote(message: string): void;
   onRequestAvailableModels(): void;
   onRequestModelChange(provider: string, modelId: string): void;
   onRequestThinkingLevelChange(level: ThinkingLevel): void;
-}
-
-interface ModelControlsRuntime {
-  options: ModelControlsOptions;
-  pickerControls: ModelPickerControls;
-  state: ModelControlState;
 }
 
 export interface ModelControls {
@@ -42,96 +38,119 @@ export interface ModelControls {
 }
 
 export function createModelControls(options: ModelControlsOptions): ModelControls {
-  let runtime!: ModelControlsRuntime;
-  const pickerControls = createModelPickerControls({
-    expectElement: options.expectElement,
+  const state = createModelControlState();
+  let viewState = getRenderState(state);
+  const pickerControls = options.createPickerControls({
     onModelChange(value) {
-      handleModelPickerChange(runtime, value);
+      handleModelPickerChange(state, options, value, refreshViewState);
     },
     onThinkingLevelChange(value) {
-      handleThinkingLevelPickerChange(runtime, value);
+      handleThinkingLevelPickerChange(state, options, value, refreshViewState);
     },
   });
 
-  runtime = {
-    options,
-    pickerControls,
-    state: createModelControlState(),
+  syncView(pickerControls, options, viewState);
+
+  const refreshViewState = () => {
+    const nextViewState = getRenderState(state);
+    if (isModelControlRenderStateEqual(viewState, nextViewState)) return;
+    viewState = nextViewState;
+    syncView(pickerControls, options, viewState);
   };
 
-  renderInitialThinkingLevelPicker(runtime);
-  notifyImageSupportChange(runtime);
   return {
     handleHostError() {
-      restorePendingSelections(runtime.state);
-      render(runtime);
+      restorePendingSelections(state);
+      refreshViewState();
     },
     handleQueryResult(event) {
-      const outcome = handleStateQueryResult(runtime.state, event);
+      const outcome = handleStateQueryResult(state, event);
       if (!outcome.consumed) return false;
-      render(runtime);
+      refreshViewState();
       if (outcome.note) {
-        runtime.options.onInlineNote(outcome.note);
+        options.onInlineNote(outcome.note);
       }
       return true;
     },
     requestAvailableModels() {
-      if (!requestAvailableModelsOnce(runtime.state)) return;
-      runtime.options.onRequestAvailableModels();
+      if (!requestAvailableModelsOnce(state)) return;
+      options.onRequestAvailableModels();
     },
     supportsImageInput() {
-      return getRenderState(runtime.state).supportsImageInput;
+      return viewState.supportsImageInput;
     },
     syncRpcState(rpc) {
-      syncStateRpc(runtime.state, rpc);
-      render(runtime);
+      syncStateRpc(state, rpc);
+      refreshViewState();
     },
   };
 }
 
-function handleModelPickerChange(runtime: ModelControlsRuntime, value: string): void {
-  const request = requestModelChange(runtime.state, value);
-  if (!request) return;
-  runtime.options.onInlineNote(request.note);
-  render(runtime);
-  runtime.options.onRequestModelChange(request.provider, request.modelId);
-}
-
-function handleThinkingLevelPickerChange(runtime: ModelControlsRuntime, value: string): void {
-  const level = requestThinkingLevelChange(runtime.state, value);
-  if (!level) return;
-  render(runtime);
-  runtime.options.onRequestThinkingLevelChange(level);
-}
-
-function notifyImageSupportChange(
-  runtime: ModelControlsRuntime,
-  supported = getRenderState(runtime.state).supportsImageInput,
+function handleModelPickerChange(
+  state: ModelControlState,
+  options: ModelControlsOptions,
+  value: string,
+  refreshViewState: () => void,
 ): void {
-  runtime.options.onImageSupportChange(supported);
+  const request = requestModelChange(state, value);
+  if (!request) return;
+  options.onInlineNote(request.note);
+  refreshViewState();
+  options.onRequestModelChange(request.provider, request.modelId);
 }
 
-function render(runtime: ModelControlsRuntime): void {
-  const state = getRenderState(runtime.state);
-  renderModelPickerUi(runtime.pickerControls, {
-    availableModelValues: state.availableModelValues,
-    availableModelsByValue: state.availableModelsByValue,
-    currentModelValue: state.currentModelValue,
-    modelLabelByValue: state.modelLabelByValue,
-    modelOptionsLoaded: state.modelOptionsLoaded,
+function handleThinkingLevelPickerChange(
+  state: ModelControlState,
+  options: ModelControlsOptions,
+  value: string,
+  refreshViewState: () => void,
+): void {
+  const level = requestThinkingLevelChange(state, value);
+  if (!level) return;
+  refreshViewState();
+  options.onRequestThinkingLevelChange(level);
+}
+
+function syncView(
+  pickerControls: ModelPickerControls,
+  options: Pick<ModelControlsOptions, "onImageSupportChange">,
+  viewState: ModelControlRenderState,
+): void {
+  renderModelPickerUi(pickerControls, {
+    availableModelValues: viewState.availableModelValues,
+    availableModelsByValue: viewState.availableModelsByValue,
+    currentModelValue: viewState.currentModelValue,
+    modelLabelByValue: viewState.modelLabelByValue,
+    modelOptionsLoaded: viewState.modelOptionsLoaded,
   });
   renderThinkingLevelPickerUi(
-    runtime.pickerControls,
-    state.preferredThinkingLevel,
-    state.supportedThinkingLevels,
+    pickerControls,
+    viewState.preferredThinkingLevel,
+    viewState.supportedThinkingLevels,
   );
-  notifyImageSupportChange(runtime, state.supportsImageInput);
+  options.onImageSupportChange(viewState.supportsImageInput);
 }
 
-function renderInitialThinkingLevelPicker(runtime: ModelControlsRuntime): void {
-  renderThinkingLevelPickerUi(
-    runtime.pickerControls,
-    "medium",
-    getRenderState(runtime.state).supportedThinkingLevels,
+function isModelControlRenderStateEqual(
+  left: ModelControlRenderState,
+  right: ModelControlRenderState,
+): boolean {
+  return (
+    left.availableModelsByValue === right.availableModelsByValue &&
+    left.modelLabelByValue === right.modelLabelByValue &&
+    left.currentModelValue === right.currentModelValue &&
+    left.modelOptionsLoaded === right.modelOptionsLoaded &&
+    left.preferredThinkingLevel === right.preferredThinkingLevel &&
+    left.supportsImageInput === right.supportsImageInput &&
+    isStringListEqual(left.availableModelValues, right.availableModelValues) &&
+    isStringListEqual(left.supportedThinkingLevels, right.supportedThinkingLevels)
   );
+}
+
+function isStringListEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }

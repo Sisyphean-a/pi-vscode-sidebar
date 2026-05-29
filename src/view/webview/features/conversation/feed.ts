@@ -1,6 +1,7 @@
-import { effect, signal } from "@preact/signals";
-import { h, render, type ComponentChildren } from "preact";
+import { h, type ComponentChildren } from "preact";
 import type { UiPendingImageAttachment } from "../../../protocol.ts";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
+import { createPreactRenderPort } from "../../ui/preact-render-port.ts";
 import {
   applyMessageText,
   createConversationFeedState,
@@ -15,7 +16,7 @@ const INLINE_ACTIVITY_SLOT_KEY = "activity:current";
 type FeedBlockRole = ChatRole | "activity";
 
 interface CreateConversationFeedOptions {
-  container: HTMLElement;
+  view: PreactRenderPort;
   onChange(): void;
   renderAssistantMarkdown(text: string): ComponentChildren;
   renderPlainTextWithReferences(text: string): ComponentChildren;
@@ -23,9 +24,8 @@ interface CreateConversationFeedOptions {
 
 export interface ConversationFeed {
   attachImagesToMessage(messageKey: string, attachments: UiPendingImageAttachment[]): void;
-  ensureInlineActivitySlot(): HTMLElement;
-  findInlineActivitySlot(): HTMLElement | null;
-  moveInlineActivitySlotToEnd(): HTMLElement;
+  findInlineActivitySlotView(): PreactRenderPort | undefined;
+  moveInlineActivitySlotToEnd(): PreactRenderPort;
   reset(): void;
   setMessageText(
     key: string,
@@ -47,18 +47,24 @@ export function createConversationFeed(options: CreateConversationFeedOptions): 
   const feedState = createConversationFeedState();
   const messagesByKey = new Map<string, ConversationFeedMessageViewState>();
   const messageOrder: string[] = [];
-  const viewSignal = signal<ConversationFeedMessageViewState[]>([]);
-
-  effect(() => {
-    render(
+  let viewMessages: ConversationFeedMessageViewState[] = [];
+  let renderedMessages: ConversationFeedMessageViewState[] = [];
+  let inlineActivitySlotElement: HTMLElement | null = null;
+  let inlineActivitySlotView: PreactRenderPort | undefined;
+  const renderView = () => {
+    options.view.render(
       h(ConversationFeedMessages, {
-        messages: viewSignal.value,
+        messages: viewMessages,
+        onInlineActivitySlotRef(element) {
+          inlineActivitySlotElement = element;
+          inlineActivitySlotView = element ? createPreactRenderPort(element) : undefined;
+        },
         renderAssistantMarkdown: options.renderAssistantMarkdown,
         renderPlainTextWithReferences: options.renderPlainTextWithReferences,
       }),
-      options.container,
     );
-  });
+  };
+  renderView();
 
   return {
     attachImagesToMessage(messageKey, attachments) {
@@ -68,20 +74,14 @@ export function createConversationFeed(options: CreateConversationFeedOptions): 
       refreshView();
       options.onChange();
     },
-    ensureInlineActivitySlot() {
-      return ensureInlineActivitySlotElement({
-        container: options.container,
-        messageOrder,
-        messagesByKey,
-        refreshView,
-      });
-    },
-    findInlineActivitySlot() {
-      return findInlineActivitySlotElement(options.container);
+    findInlineActivitySlotView() {
+      return inlineActivitySlotView;
     },
     moveInlineActivitySlotToEnd() {
       const slot = ensureInlineActivitySlotElement({
-        container: options.container,
+        getInlineActivitySlot() {
+          return inlineActivitySlotElement;
+        },
         messageOrder,
         messagesByKey,
         refreshView,
@@ -92,12 +92,18 @@ export function createConversationFeed(options: CreateConversationFeedOptions): 
         messageOrder.push(INLINE_ACTIVITY_SLOT_KEY);
         refreshView();
       }
-      return slot;
+      const view = inlineActivitySlotView;
+      if (!view) {
+        throw new Error("Missing inline activity slot view.");
+      }
+      return view;
     },
     reset() {
       resetConversationFeedState(feedState);
       messagesByKey.clear();
       messageOrder.length = 0;
+      inlineActivitySlotElement = null;
+      inlineActivitySlotView = undefined;
       refreshView();
     },
     setMessageText(key, role, nextText, mode, fallbackKeys = []) {
@@ -121,7 +127,7 @@ export function createConversationFeed(options: CreateConversationFeedOptions): 
   };
 
   function refreshView(): void {
-    viewSignal.value = messageOrder
+    const nextViewMessages = messageOrder
       .map((messageKey) => messagesByKey.get(messageKey))
       .filter((message): message is ConversationFeedMessageViewState => !!message)
       .map((message) => ({
@@ -130,6 +136,10 @@ export function createConversationFeed(options: CreateConversationFeedOptions): 
         role: message.role,
         text: message.text,
       }));
+    if (isConversationFeedMessagesEqual(renderedMessages, nextViewMessages)) return;
+    viewMessages = nextViewMessages;
+    renderedMessages = nextViewMessages;
+    renderView();
   }
 }
 
@@ -152,6 +162,7 @@ function promoteRenderedMessageKey(
 
 interface ConversationFeedMessagesProps {
   messages: ConversationFeedMessageViewState[];
+  onInlineActivitySlotRef(element: HTMLElement | null): void;
   renderAssistantMarkdown(text: string): ComponentChildren;
   renderPlainTextWithReferences(text: string): ComponentChildren;
 }
@@ -163,6 +174,7 @@ function ConversationFeedMessages(props: ConversationFeedMessagesProps) {
           class: "chat-inline-activity-slot",
           key: message.key,
           "data-inline-activity-slot": "true",
+          ref: props.onInlineActivitySlotRef,
         })
       : h(
           "article",
@@ -220,7 +232,7 @@ function renderToolDetails(message: ConversationFeedMessageViewState): Component
 }
 
 function ensureInlineActivitySlotElement(options: {
-  container: HTMLElement;
+  getInlineActivitySlot(): HTMLElement | null;
   messageOrder: string[];
   messagesByKey: Map<string, ConversationFeedMessageViewState>;
   refreshView(): void;
@@ -235,14 +247,50 @@ function ensureInlineActivitySlotElement(options: {
     });
     options.refreshView();
   }
-  const slot = options.container.querySelector("[data-inline-activity-slot='true']");
+  const slot = options.getInlineActivitySlot();
   if (!(slot instanceof HTMLElement)) {
     throw new Error("Missing inline activity slot.");
   }
   return slot;
 }
 
-function findInlineActivitySlotElement(container: HTMLElement): HTMLElement | null {
-  const slot = container.querySelector("[data-inline-activity-slot='true']");
-  return slot instanceof HTMLElement ? slot : null;
+function isConversationFeedMessagesEqual(
+  left: readonly ConversationFeedMessageViewState[],
+  right: readonly ConversationFeedMessageViewState[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftMessage = left[index];
+    const rightMessage = right[index];
+    if (!leftMessage || !rightMessage) return false;
+    if (
+      leftMessage.key !== rightMessage.key ||
+      leftMessage.role !== rightMessage.role ||
+      leftMessage.text !== rightMessage.text
+    ) {
+      return false;
+    }
+    if (!isAttachmentListEqual(leftMessage.attachments, rightMessage.attachments)) return false;
+  }
+  return true;
+}
+
+function isAttachmentListEqual(
+  left: readonly UiPendingImageAttachment[],
+  right: readonly UiPendingImageAttachment[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftAttachment = left[index];
+    const rightAttachment = right[index];
+    if (!leftAttachment || !rightAttachment) return false;
+    if (
+      leftAttachment.id !== rightAttachment.id ||
+      leftAttachment.previewUrl !== rightAttachment.previewUrl ||
+      leftAttachment.name !== rightAttachment.name
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

@@ -1,5 +1,5 @@
-import { effect, signal } from "@preact/signals";
-import { h, render } from "preact";
+import { h } from "preact";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
 import {
   resolveComposerPickerDismissAction,
   resolveComposerPickerOpenedElsewhereAction,
@@ -25,65 +25,65 @@ export interface ComposerPicker {
 }
 
 interface CreateComposerPickerOptions {
+  optionListView: PreactRenderPort;
   root: HTMLElement;
   trigger: HTMLButtonElement;
   panel: HTMLElement;
-  list: HTMLElement;
   onChange(value: string): void;
 }
 
 export function createComposerPicker(options: CreateComposerPickerOptions): ComposerPicker {
   const refs = createComposerPickerRefs(options);
   const state = createComposerPickerState();
-  const viewStateSignal = signal<ComposerPickerViewState>(createComposerPickerViewState(state));
+  let disabledState = refs.trigger.disabled;
 
-  effect(() => {
-    syncComposerPickerUi(refs, viewStateSignal.value);
-  });
+  const sync = () => {
+    syncComposerPickerUi(refs, createComposerPickerViewState(state), disabledState);
+  };
 
-  bindTriggerToggle(refs, state, viewStateSignal);
-  bindOptionSelection(options, refs, state, viewStateSignal);
-  bindDismissListeners(refs, state, viewStateSignal);
-  renderComposerPicker(viewStateSignal, state);
+  bindTriggerToggle(refs, state, sync);
+  bindOptionSelection(options, refs, state, sync);
+  bindDismissListeners(refs, state, sync);
+  sync();
 
   return {
     hasOption(value) {
       return hasComposerPickerOption(state, value);
     },
     setDisabled(disabled) {
-      refs.trigger.disabled = disabled;
-      refs.root.classList.toggle("is-disabled", disabled);
-      if (disabled) resolveComposerPickerDismissAction(state);
-      renderComposerPicker(viewStateSignal, state);
+      disabledState = disabled;
+      refs.trigger.disabled = disabledState;
+      if (disabledState) resolveComposerPickerDismissAction(state);
+      sync();
     },
     setFallbackLabel(label) {
       setComposerPickerFallbackLabel(state, label);
-      renderComposerPicker(viewStateSignal, state);
+      sync();
     },
     setOptions(nextOptions) {
       setComposerPickerOptions(state, nextOptions);
-      renderComposerPicker(viewStateSignal, state);
+      sync();
     },
     setValue(value) {
       setComposerPickerValue(state, value);
-      renderComposerPicker(viewStateSignal, state);
+      sync();
     },
   };
 }
 
 function createComposerPickerRefs(options: CreateComposerPickerOptions): ComposerPickerDomRefs {
   return {
+    optionListView: options.optionListView,
     root: options.root,
     trigger: options.trigger,
     panel: options.panel,
-    list: options.list,
   };
 }
 
 function bindTriggerToggle(
   refs: ComposerPickerDomRefs,
   state: ComposerPickerState,
-  viewStateSignal: { value: ComposerPickerViewState },
+  sync: () => void,
 ): void {
   refs.trigger.addEventListener("click", () => {
     const action = resolveComposerPickerTriggerAction(state, refs.trigger.disabled);
@@ -91,7 +91,7 @@ function bindTriggerToggle(
     if (action === "open") {
       document.dispatchEvent(new CustomEvent("composer-picker:open", { detail: refs.root.id }));
     }
-    renderComposerPicker(viewStateSignal, state);
+    sync();
   });
 }
 
@@ -99,14 +99,14 @@ function bindOptionSelection(
   options: CreateComposerPickerOptions,
   refs: ComposerPickerDomRefs,
   state: ComposerPickerState,
-  viewStateSignal: { value: ComposerPickerViewState },
+  sync: () => void,
 ): void {
-  refs.list.addEventListener("click", (event) => {
+  refs.root.addEventListener("click", (event) => {
     const button = readComposerPickerButton(event.target);
     if (!button || button.disabled) return;
     const action = resolveComposerPickerSelectionAction(state, button.dataset.value ?? "");
     if (action.type === "ignore") return;
-    renderComposerPicker(viewStateSignal, state);
+    sync();
     if (action.type === "change") {
       options.onChange(action.value);
     }
@@ -116,17 +116,17 @@ function bindOptionSelection(
 function bindDismissListeners(
   refs: ComposerPickerDomRefs,
   state: ComposerPickerState,
-  viewStateSignal: { value: ComposerPickerViewState },
+  sync: () => void,
 ): void {
   document.addEventListener("click", (event) => {
     if (!(event.target instanceof Node) || refs.root.contains(event.target)) return;
     if (!resolveComposerPickerDismissAction(state)) return;
-    renderComposerPicker(viewStateSignal, state);
+    sync();
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !resolveComposerPickerDismissAction(state)) return;
-    renderComposerPicker(viewStateSignal, state);
+    sync();
   });
 
   document.addEventListener("composer-picker:open", (event) => {
@@ -134,15 +134,8 @@ function bindDismissListeners(
     if (!resolveComposerPickerOpenedElsewhereAction(state, customEvent.detail, refs.root.id)) {
       return;
     }
-    renderComposerPicker(viewStateSignal, state);
+    sync();
   });
-}
-
-function renderComposerPicker(
-  viewStateSignal: { value: ComposerPickerViewState },
-  state: ComposerPickerState,
-): void {
-  viewStateSignal.value = createComposerPickerViewState(state);
 }
 
 function readComposerPickerButton(target: EventTarget | null): HTMLButtonElement | undefined {
@@ -151,10 +144,10 @@ function readComposerPickerButton(target: EventTarget | null): HTMLButtonElement
 }
 
 interface ComposerPickerDomRefs {
+  optionListView: PreactRenderPort;
   root: HTMLElement;
   trigger: HTMLButtonElement;
   panel: HTMLElement;
-  list: HTMLElement;
 }
 
 interface ComposerPickerViewState {
@@ -178,21 +171,22 @@ function createComposerPickerViewState(
 function syncComposerPickerUi(
   refs: ComposerPickerDomRefs,
   state: Readonly<ComposerPickerViewState>,
+  disabled: boolean,
 ): void {
-  render(
+  refs.optionListView.render(
     h(ComposerPickerOptionList, {
       currentOptions: state.currentOptions,
       currentValue: state.currentValue,
     }),
-    refs.list,
   );
 
   const selectedOption = state.currentOptions.find((option) => option.value === state.currentValue);
   refs.trigger.dataset.value = state.currentValue;
   refs.trigger.textContent = selectedOption?.label ?? state.fallbackLabel;
-  refs.root.classList.toggle("has-options", state.currentOptions.length > 0);
-  refs.root.classList.toggle("is-open", state.isOpen);
-  refs.panel.classList.toggle("hidden", !state.isOpen);
+  refs.root.dataset.hasOptions = state.currentOptions.length > 0 ? "true" : "false";
+  refs.root.dataset.isOpen = state.isOpen ? "true" : "false";
+  refs.root.dataset.disabled = disabled ? "true" : "false";
+  refs.panel.hidden = !state.isOpen;
   refs.trigger.setAttribute("aria-expanded", state.isOpen ? "true" : "false");
 }
 

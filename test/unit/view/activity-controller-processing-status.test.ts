@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createActivityController } from "../../../src/view/webview/features/activity/controller.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("activity controller processing status", () => {
   beforeEach(() => {
@@ -15,7 +16,7 @@ describe("activity controller processing status", () => {
   it("shows assistant processing status before the first token and clears it on agent end", () => {
     const container = document.createElement("section");
     const controller = createActivityController({
-      container,
+      view: createPreactRenderPort(container),
       conversationFeed: createConversationFeedStub(),
       onChange: vi.fn(),
     });
@@ -42,7 +43,7 @@ describe("activity controller processing status", () => {
   it("ignores user message start events", () => {
     const container = document.createElement("section");
     const controller = createActivityController({
-      container,
+      view: createPreactRenderPort(container),
       conversationFeed: createConversationFeedStub(),
       onChange: vi.fn(),
     });
@@ -60,11 +61,11 @@ describe("activity controller processing status", () => {
 });
 
 function createConversationFeedStub() {
+  const inlineSlotView = createPreactRenderPort(document.createElement("section"));
   return {
     attachImagesToMessage: vi.fn(),
-    ensureInlineActivitySlot: vi.fn(() => document.createElement("section")),
-    findInlineActivitySlot: vi.fn(() => null),
-    moveInlineActivitySlotToEnd: vi.fn(() => document.createElement("section")),
+    findInlineActivitySlotView: vi.fn(() => inlineSlotView),
+    moveInlineActivitySlotToEnd: vi.fn(() => inlineSlotView),
     reset: vi.fn(),
     setMessageText: vi.fn(),
   };

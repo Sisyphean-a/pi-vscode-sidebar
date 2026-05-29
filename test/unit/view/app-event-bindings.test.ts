@@ -22,6 +22,10 @@ describe("app event bindings", () => {
     };
 
     bindAppEventBindings({
+      composerInput: createComposerInputEventPort(
+        document.getElementById("prompt-input") as HTMLTextAreaElement,
+        vi.fn(),
+      ),
       commandPalette: {
         update: vi.fn(),
       },
@@ -36,14 +40,16 @@ describe("app event bindings", () => {
       handleMessageFeedScroll: vi.fn(),
       handlePromptPaste: vi.fn(),
       handleScrollToBottom: vi.fn(),
-      messageFeed: document.getElementById("message-feed") as HTMLElement,
-      newSessionButton: document.getElementById("new-session-button") as HTMLButtonElement,
+      messageFeed: createMessageFeedEventPort(document.getElementById("message-feed") as HTMLElement),
+      newSessionButton: createClickEventPort(
+        document.getElementById("new-session-button") as HTMLButtonElement,
+      ),
       onAbort,
       onNewSession: vi.fn(),
-      promptInput: document.getElementById("prompt-input") as HTMLTextAreaElement,
-      scrollToBottomButton: document.getElementById("scroll-to-bottom-button") as HTMLButtonElement,
-      sendButton: document.getElementById("send-button") as HTMLButtonElement,
-      syncComposerHeight: vi.fn(),
+      scrollToBottomButton: createClickEventPort(
+        document.getElementById("scroll-to-bottom-button") as HTMLButtonElement,
+      ),
+      sendButton: createClickEventPort(document.getElementById("send-button") as HTMLButtonElement),
     });
 
     (document.getElementById("send-button") as HTMLButtonElement).click();
@@ -52,3 +58,40 @@ describe("app event bindings", () => {
     expect(composerActions.sendPrompt).not.toHaveBeenCalled();
   });
 });
+
+function createClickEventPort(button: HTMLButtonElement) {
+  return {
+    addClickListener(listener: () => void) {
+      button.addEventListener("click", listener);
+    },
+  };
+}
+
+function createComposerInputEventPort(promptInput: HTMLTextAreaElement, syncHeight: () => void) {
+  return {
+    addInputListener(listener: () => void) {
+      promptInput.addEventListener("input", listener);
+    },
+    addKeydownListener(listener: (event: KeyboardEvent) => void) {
+      promptInput.addEventListener("keydown", listener);
+    },
+    addPasteListener(listener: (event: ClipboardEvent | Event) => void) {
+      promptInput.addEventListener("paste", listener);
+    },
+    getValue() {
+      return promptInput.value;
+    },
+    syncHeight,
+  };
+}
+
+function createMessageFeedEventPort(messageFeed: HTMLElement) {
+  return {
+    addClickListener(listener: (event: MouseEvent) => void) {
+      messageFeed.addEventListener("click", listener);
+    },
+    addScrollListener(listener: () => void) {
+      messageFeed.addEventListener("scroll", listener);
+    },
+  };
+}

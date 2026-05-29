@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { createExtensionUiRenderer } from "../../../src/view/webview/features/extension-ui/panel.tsx";
+import {
+  createExtensionUiRenderer,
+} from "../../../src/view/webview/features/extension-ui/panel.tsx";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("extension ui renderer", () => {
   it("treats notify as inline notice and reads notifyType level", () => {
@@ -13,7 +16,7 @@ describe("extension ui renderer", () => {
       message: "Bridge disconnected",
     });
 
-    expect(harness.panel.classList.contains("hidden")).toBe(true);
+    expect(harness.panel.hidden).toBe(true);
     expect(harness.panel.textContent).toBe("");
     expect(harness.notices).toEqual(["[警告] Bridge disconnected"]);
     expect(harness.responses).toEqual([]);
@@ -46,10 +49,11 @@ describe("extension ui renderer", () => {
 
     const editor = harness.expectElement<HTMLTextAreaElement>("ext-editor-text");
     editor.value = "const a = 2;";
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
     harness.expectElement<HTMLButtonElement>("ext-apply-editor-text").click();
 
     expect(harness.editorTexts).toEqual(["const a = 2;"]);
-    expect(harness.panel.classList.contains("hidden")).toBe(true);
+    expect(harness.panel.hidden).toBe(true);
     expect(harness.responses).toEqual([]);
   });
 
@@ -65,6 +69,7 @@ describe("extension ui renderer", () => {
 
     const input = harness.expectElement<HTMLTextAreaElement>("ext-input");
     input.value = "approved";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     harness.expectElement<HTMLButtonElement>("ext-submit").click();
 
     expect(harness.responses).toEqual([{ requestId: "req-input", payload: "approved" }]);
@@ -72,7 +77,7 @@ describe("extension ui renderer", () => {
 });
 
 function createHarness() {
-  document.body.innerHTML = `<section id="panel" class="hidden"></section>`;
+  document.body.innerHTML = `<section id="panel" hidden></section>`;
   const panel = expectElement<HTMLElement>("panel");
   const responses: Array<{ requestId: string; payload: unknown }> = [];
   const statusUpdates: Array<{ statusKey: string; statusText?: string }> = [];
@@ -80,8 +85,13 @@ function createHarness() {
   const editorTexts: string[] = [];
   const notices: string[] = [];
 
-  const render = createExtensionUiRenderer({
-    panel,
+  const controller = createExtensionUiRenderer({
+    panelVisibility: {
+      setHidden(hidden) {
+        panel.hidden = hidden;
+      },
+    },
+    view: createPreactRenderPort(panel),
     postResponse(requestId, payload) {
       responses.push({ requestId, payload });
     },
@@ -106,7 +116,9 @@ function createHarness() {
     titles,
     editorTexts,
     notices,
-    render,
+    render(data: Record<string, unknown>) {
+      controller.handleRequest(data);
+    },
     expectElement,
   };
 }

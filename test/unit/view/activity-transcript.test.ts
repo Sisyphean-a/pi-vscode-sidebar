@@ -4,12 +4,16 @@ import {
   createActivityTranscript,
   type ActivityEntryUpdate,
 } from "../../../src/view/webview/features/activity/transcript.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("activity transcript", () => {
   it("supports note append, key rename and reset cleanup", () => {
     const container = document.createElement("section");
     const onChange = vi.fn();
-    const transcript = createActivityTranscript({ container, onChange });
+    const transcript = createActivityTranscript({
+      view: createPreactRenderPort(container),
+      onChange,
+    });
 
     transcript.record(createUpdate({ groupKey: "g1", entryKey: "e1", label: "step-1" }));
     transcript.appendNote("note-1", "正在同步模型");

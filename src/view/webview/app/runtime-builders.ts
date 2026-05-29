@@ -5,13 +5,19 @@ import type {
 import { resolveSidebarCommandId } from "../../../shared/sidebar-commands.ts";
 import { createActivityController } from "../features/activity/controller.ts";
 import { createAppLifecycle, type AppLifecycle } from "./lifecycle.ts";
-import { type AppDom, expectAppElement } from "./shell.tsx";
+import { bindAppEventBindings } from "./event-bindings.ts";
 import { createCommandPalette, type CommandPalette } from "../features/command/palette.ts";
-import { createCommandUiController, type CommandUiController } from "../features/command/ui.ts";
+import {
+  createCommandUiController,
+  type CommandUiController,
+} from "../features/command/ui.ts";
 import { createComposerActions, type ComposerActions } from "../features/composer/actions.ts";
-import { resetComposerHeight, syncComposerHeight } from "../features/composer/composer.ts";
 import { createConversationFeed } from "../features/conversation/feed.ts";
 import { createConversationPageFlow, type ConversationPageFlow } from "../features/conversation/page-flow.ts";
+import {
+  createExtensionUiRenderer,
+  type ExtensionUiController,
+} from "../features/extension-ui/panel.tsx";
 import {
   createImageAttachmentController,
   type ImageAttachmentController,
@@ -22,15 +28,15 @@ import { createRecentSessionsPanel } from "../features/recent-sessions/panel.ts"
 import { createSidebarHostBridge } from "./runtime-host.ts";
 import type { HostMessageHandler } from "../host/message-handler.ts";
 import type { UiMessagePoster } from "../host/ui-message-poster.ts";
-
-export interface RuntimeRefs {
-  appLifecycle?: AppLifecycle;
-  conversationPage?: ConversationPageFlow;
-  dynamicSlashCommands: SidebarCommandDefinition[];
-}
+import type {
+  DisabledPort,
+  RuntimeViewPorts,
+  SendButtonStreamingPort,
+} from "./view-ports.ts";
 
 export interface SidebarAppRuntime {
   appLifecycle: AppLifecycle;
+  bindEvents(options: RuntimeEventBindingOptions): void;
   commandPalette: CommandPalette;
   commandUi: CommandUiController;
   composerActions: ComposerActions;
@@ -40,75 +46,123 @@ export interface SidebarAppRuntime {
   modelControls: ModelControls;
 }
 
+interface RuntimeEventBindingOptions {
+  onAbort(): void;
+  onNewSession(): void;
+}
+
 interface CreateSidebarAppRuntimeOptions {
-  dom: AppDom;
   locale: SidebarCommandLocale;
   uiMessagePoster: UiMessagePoster;
+  viewPorts: RuntimeViewPorts;
 }
 
 interface RuntimeBuilderContext extends CreateSidebarAppRuntimeOptions {
-  refs: RuntimeRefs;
+  dynamicSlashCommands: SidebarCommandDefinition[];
+  appLifecycle?: AppLifecycle;
+  conversationPage?: ConversationPageFlow;
 }
 
 type ConversationRuntimeOptions = {
   commandPalette: CommandPalette;
   context: RuntimeBuilderContext;
-};
-
-type ConversationFeatureOptions = {
-  context: RuntimeBuilderContext;
-  conversationPage: ConversationPageFlow;
-};
-
-type ModelControlBuilderOptions = ConversationFeatureOptions & {
-  imageAttachmentController: ImageAttachmentController;
-};
-
-type ComposerActionBuilderOptions = ModelControlBuilderOptions & {
-  commandPalette: CommandPalette;
+  extensionUi: Pick<ExtensionUiController, "hide" | "isVisible">;
 };
 
 export function createSidebarAppRuntime(
   options: CreateSidebarAppRuntimeOptions,
 ): SidebarAppRuntime {
-  const refs: RuntimeRefs = { dynamicSlashCommands: [] };
-  const context: RuntimeBuilderContext = { ...options, refs };
+  const context: RuntimeBuilderContext = {
+    ...options,
+    dynamicSlashCommands: [],
+  };
   const { commandPalette, commandUi } = createCommandSurface(context);
-  const conversationPage = createConversationRuntime({ commandPalette, context });
-  const imageAttachmentController = createSidebarImageAttachments({ context, conversationPage });
-  const modelControls = createSidebarModelControls({
-    context,
-    conversationPage,
-    imageAttachmentController,
-  });
-  const composerActions = createSidebarComposerActions({
-    commandPalette,
-    context,
-    conversationPage,
-    imageAttachmentController,
+  const extensionUiController = createSidebarExtensionUiController(context, (message) => {
+    context.conversationPage?.appendInlineNote(message);
   });
 
-  refs.appLifecycle = createAppLifecycle({
+  const conversationPage = createConversationRuntime({
+    commandPalette,
+    context,
+    extensionUi: extensionUiController,
+  });
+  context.conversationPage = conversationPage;
+
+  const imageAttachmentController = createSidebarImageAttachments(context, conversationPage);
+  const modelControls = createSidebarModelControls(
+    context,
     conversationPage,
     imageAttachmentController,
-    newSessionButton: context.dom.newSessionButton,
-    promptInput: context.dom.promptInput,
-    resetComposerHeight,
-    sendButton: context.dom.sendButton,
+  );
+  const composerActions = createSidebarComposerActions(
+    context,
+    commandPalette,
+    conversationPage,
+    imageAttachmentController,
+  );
+
+  const composerInput = context.viewPorts.composer.input;
+
+  context.appLifecycle = createAppLifecycle({
+    conversationPage,
+    resetComposer() {
+      composerInput.setValue("");
+      imageAttachmentController.clear();
+      composerInput.resetHeight();
+    },
+    syncStreamingChrome(isStreamingPhase) {
+      syncStreamingChromeControls(
+        context.viewPorts.header.newSessionButtonDisabled,
+        context.viewPorts.composer.sendButtonStreaming,
+        isStreamingPhase,
+      );
+    },
   });
-  resetComposerHeight(context.dom.promptInput);
+  composerInput.resetHeight();
+
   const hostMessageHandler = createSidebarHostBridge({
     commandPalette,
     commandUi,
     conversationPage,
-    dom: context.dom,
     imageAttachmentController,
     modelControls,
-    uiMessagePoster: context.uiMessagePoster,
+    promptInput: composerInput,
+    renderExtensionUiRequest(data) {
+      extensionUiController.handleRequest(data);
+    },
   });
 
+  const runtimeLifecycle = requireAppLifecycle(context);
+
   return {
-    appLifecycle: requireAppLifecycle(refs),
+    appLifecycle: runtimeLifecycle,
+    bindEvents(eventBindingOptions) {
+      bindAppEventBindings({
+        composerInput,
+        commandPalette,
+        commandUi,
+        composerActions,
+        getIsStreamingPhase: runtimeLifecycle.isStreamingPhase,
+        handleHostMessage: hostMessageHandler.handle,
+        handleMessageFeedClick: conversationPage.handleMessageFeedClick,
+        handleMessageFeedScroll: conversationPage.handleMessageFeedScroll,
+        handlePromptPaste(event) {
+          return imageAttachmentController.handlePaste(event);
+        },
+        handleScrollToBottom() {
+          conversationPage.scrollToBottom(true);
+        },
+        messageFeed: context.viewPorts.conversation.eventPort,
+        newSessionButton: context.viewPorts.header.newSessionButtonClick,
+        onAbort: eventBindingOptions.onAbort,
+        onNewSession() {
+          runtimeLifecycle.startFreshConversation();
+          eventBindingOptions.onNewSession();
+        },
+        scrollToBottomButton: context.viewPorts.conversation.scrollToBottomButtonClick,
+        sendButton: context.viewPorts.composer.sendButtonClick,
+      });
+    },
     commandPalette,
     commandUi,
     composerActions,
@@ -119,36 +173,61 @@ export function createSidebarAppRuntime(
   };
 }
 
+function requireAppLifecycle(context: Pick<RuntimeBuilderContext, "appLifecycle">): AppLifecycle {
+  if (!context.appLifecycle) {
+    throw new Error("App lifecycle is not initialized.");
+  }
+  return context.appLifecycle;
+}
+
+function createSidebarExtensionUiController(
+  context: RuntimeBuilderContext,
+  onInlineNote: (message: string) => void,
+): ExtensionUiController {
+  const composerInput = context.viewPorts.composer.input;
+  return createExtensionUiRenderer({
+    panelVisibility: context.viewPorts.conversation.extensionUiPanelVisibility,
+    view: context.viewPorts.conversation.extensionUiPanelView,
+    postResponse(requestId, payload) {
+      context.uiMessagePoster.post({ type: "respond_extension_ui", requestId, payload });
+    },
+    queueNotice: onInlineNote,
+    setEditorText(text) {
+      composerInput.setValue(text);
+      composerInput.focus();
+    },
+    updateStatus() {},
+    updateTitle() {},
+  });
+}
+
 function createCommandSurface(context: RuntimeBuilderContext): {
   commandPalette: CommandPalette;
   commandUi: CommandUiController;
 } {
+  const composerInput = context.viewPorts.composer.input;
   let commandPalette!: CommandPalette;
   commandPalette = createCommandPalette({
     applyCommand(name) {
-      context.dom.promptInput.value = `/${name}`;
-      syncComposerHeight(context.dom.promptInput);
-      context.dom.promptInput.focus();
-      commandPalette.update(context.dom.promptInput.value);
+      composerInput.setValueAndSyncHeight(`/${name}`);
+      composerInput.focus();
+      commandPalette.update(composerInput.getValue());
     },
     locale: context.locale,
-    list: context.dom.commandPaletteList,
-    panel: context.dom.commandPalettePanel,
+    view: context.viewPorts.composer.commandPaletteView,
   });
 
   const commandUi = createCommandUiController({
     focusComposer() {
-      context.dom.promptInput.focus();
+      composerInput.focus();
     },
-    list: context.dom.commandUiList,
-    panel: context.dom.commandUiPanel,
+    result: context.viewPorts.composer.commandResult,
+    view: context.viewPorts.composer.commandUiView,
     postResponse(requestId, payload) {
       context.uiMessagePoster.post({ type: "respond_command_ui", requestId, payload });
     },
-    result: context.dom.commandResult,
     setComposerValue(value) {
-      context.dom.promptInput.value = value;
-      syncComposerHeight(context.dom.promptInput);
+      composerInput.setValueAndSyncHeight(value);
     },
   });
 
@@ -156,46 +235,43 @@ function createCommandSurface(context: RuntimeBuilderContext): {
 }
 
 function createConversationRuntime(options: ConversationRuntimeOptions): ConversationPageFlow {
+  const composerInput = options.context.viewPorts.composer.input;
   const recentSessionsPanel = createRecentSessionsPanel({
-    closeButton: options.context.dom.recentSessionsDialogClose,
-    dialogList: options.context.dom.recentSessionsDialogList,
-    dialogTitle: options.context.dom.recentSessionsDialogTitle,
-    moreButton: options.context.dom.recentSessionsMoreButton,
     onSelect(sessionPath) {
-      requireAppLifecycle(options.context.refs).beginConversationReplay();
+      requireAppLifecycle(options.context).beginConversationReplay();
       options.context.uiMessagePoster.post({ type: "switch_session", sessionPath });
     },
-    overlay: options.context.dom.recentSessionsOverlay,
-    preview: options.context.dom.recentSessionsPreview,
-    section: options.context.dom.recentSessionsSection,
+    overlayView: options.context.viewPorts.header.recentSessionsOverlayView,
+    sectionView: options.context.viewPorts.header.recentSessionsSectionView,
   });
   const conversationFeed = createConversationFeed({
-    container: options.context.dom.messageFeed,
+    view: options.context.viewPorts.conversation.messageFeedView,
     onChange() {
-      options.context.refs.conversationPage?.handleContentChange();
+      options.context.conversationPage?.handleContentChange();
     },
     renderAssistantMarkdown,
     renderPlainTextWithReferences,
   });
   const activityController = createActivityController({
-    container: options.context.dom.activityFeed,
+    view: options.context.viewPorts.conversation.activityFeedView,
     conversationFeed,
     onChange() {
-      options.context.refs.conversationPage?.handleContentChange();
+      options.context.conversationPage?.handleContentChange();
     },
-    resolveContainer() {
-      return conversationFeed.findInlineActivitySlot();
+    resolveView() {
+      return conversationFeed.findInlineActivitySlotView();
     },
   });
   const conversationPage = createConversationPageFlow({
     activityController,
     conversationFeed,
-    extensionUiPanel: options.context.dom.extensionUiPanel,
-    messageFeed: options.context.dom.messageFeed,
+    isExtensionUiVisible() {
+      return options.extensionUi.isVisible();
+    },
     onDynamicCommandsChange(commands) {
-      options.context.refs.dynamicSlashCommands = commands;
+      options.context.dynamicSlashCommands = [...commands];
       options.commandPalette.setDynamicCommands(commands);
-      options.commandPalette.update(options.context.dom.promptInput.value);
+      options.commandPalette.update(composerInput.getValue());
     },
     onOpenFileReference(path, startLine, endLine) {
       options.context.uiMessagePoster.post({
@@ -206,26 +282,32 @@ function createConversationRuntime(options: ConversationRuntimeOptions): Convers
       });
     },
     onStreamingPhaseChange(isStreaming) {
-      requireAppLifecycle(options.context.refs).setStreamingPhase(isStreaming);
+      requireAppLifecycle(options.context).setStreamingPhase(isStreaming);
     },
     recentSessionsPanel,
-    scrollToBottomButton: options.context.dom.scrollToBottomButton,
+    resetExtensionUi() {
+      options.extensionUi.hide();
+    },
+    setScrollToBottomVisible(visible) {
+      options.context.viewPorts.conversation.scrollToBottomVisibility.setHidden(!visible);
+    },
+    viewport: options.context.viewPorts.conversation.viewport,
   });
-  options.context.refs.conversationPage = conversationPage;
   return conversationPage;
 }
 
 function createSidebarImageAttachments(
-  options: ConversationFeatureOptions,
+  context: RuntimeBuilderContext,
+  conversationPage: ConversationPageFlow,
 ): ImageAttachmentController {
   return createImageAttachmentController({
-    button: options.context.dom.imageAttachmentButton,
-    list: options.context.dom.imageAttachmentList,
+    button: context.viewPorts.composer.imageAttachmentButton,
+    listView: context.viewPorts.composer.imageAttachmentListView,
     onRequestPick() {
-      options.context.uiMessagePoster.post({ type: "pick_image_attachments" });
+      context.uiMessagePoster.post({ type: "pick_image_attachments" });
     },
     onStorePastedImage({ dataUrl, mimeType, name }) {
-      options.context.uiMessagePoster.post({
+      context.uiMessagePoster.post({
         type: "store_pasted_image_attachment",
         dataUrl,
         mimeType,
@@ -233,65 +315,75 @@ function createSidebarImageAttachments(
       });
     },
     onUnsupportedInput() {
-      options.conversationPage.appendTransientMessage("error", "当前模型不支持图片输入");
+      conversationPage.appendTransientMessage("error", "当前模型不支持图片输入");
     },
   });
 }
 
-function createSidebarModelControls(options: ModelControlBuilderOptions): ModelControls {
+function createSidebarModelControls(
+  context: RuntimeBuilderContext,
+  conversationPage: ConversationPageFlow,
+  imageAttachmentController: ImageAttachmentController,
+): ModelControls {
   return createModelControls({
-    expectElement(id) {
-      return expectAppElement(options.context.dom.root, id);
+    createPickerControls(handlers) {
+      return context.viewPorts.composer.modelPickerControlsFactory.create(handlers);
     },
     onImageSupportChange(supported) {
-      options.imageAttachmentController.setSupported(supported);
+      imageAttachmentController.setSupported(supported);
     },
     onInlineNote(message) {
-      options.conversationPage.appendInlineNote(message);
+      conversationPage.appendInlineNote(message);
     },
     onRequestAvailableModels() {
-      options.context.uiMessagePoster.post({ type: "get_available_models" });
+      context.uiMessagePoster.post({ type: "get_available_models" });
     },
     onRequestModelChange(provider, modelId) {
-      options.context.uiMessagePoster.post({ type: "set_model", provider, modelId });
+      context.uiMessagePoster.post({ type: "set_model", provider, modelId });
     },
     onRequestThinkingLevelChange(level) {
-      options.context.uiMessagePoster.post({ type: "set_thinking_level", level });
+      context.uiMessagePoster.post({ type: "set_thinking_level", level });
     },
   });
 }
 
-function createSidebarComposerActions(options: ComposerActionBuilderOptions): ComposerActions {
+function createSidebarComposerActions(
+  context: RuntimeBuilderContext,
+  commandPalette: CommandPalette,
+  conversationPage: ConversationPageFlow,
+  imageAttachmentController: ImageAttachmentController,
+): ComposerActions {
   return createComposerActions({
-    commandPalette: options.commandPalette,
-    imageAttachmentController: options.imageAttachmentController,
+    commandPalette,
+    imageAttachmentController,
     onAppendLocalUserPrompt(text, attachments) {
-      options.conversationPage.appendLocalUserPrompt(text, attachments);
+      conversationPage.appendLocalUserPrompt(text, attachments);
     },
     onPostRunCommand(name, rawInput) {
-      options.context.uiMessagePoster.post({ type: "run_command", name, rawInput });
+      context.uiMessagePoster.post({ type: "run_command", name, rawInput });
     },
     onPostSendPrompt(text, images) {
-      options.context.uiMessagePoster.post({ type: "send_prompt", text, images });
+      context.uiMessagePoster.post({ type: "send_prompt", text, images });
     },
     onUnsupportedImageInput() {
-      options.conversationPage.appendTransientMessage("error", "当前模型不支持图片输入");
+      conversationPage.appendTransientMessage("error", "当前模型不支持图片输入");
     },
-    promptInput: options.context.dom.promptInput,
-    resetComposerHeight,
+    composerInput: context.viewPorts.composer.input,
     resolveCommandName(rawInput) {
       return resolveSidebarCommandId(
         rawInput,
-        options.context.locale,
-        options.context.refs.dynamicSlashCommands,
+        context.locale,
+        context.dynamicSlashCommands,
       );
     },
   });
 }
 
-function requireAppLifecycle(refs: RuntimeRefs): AppLifecycle {
-  if (!refs.appLifecycle) {
-    throw new Error("App lifecycle is not initialized.");
-  }
-  return refs.appLifecycle;
+function syncStreamingChromeControls(
+  newSessionButton: DisabledPort,
+  sendButton: SendButtonStreamingPort,
+  isStreamingPhase: boolean,
+): void {
+  newSessionButton.setDisabled(isStreamingPhase);
+  sendButton.setStreaming(isStreamingPhase);
 }

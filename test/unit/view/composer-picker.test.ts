@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createComposerPicker } from "../../../src/view/webview/features/composer/picker.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("composer picker", () => {
   it("opens, changes selection, and closes on external dismiss", () => {
@@ -15,18 +16,18 @@ describe("composer picker", () => {
     picker.setValue("off");
 
     harness.trigger.click();
-    expect(harness.panel.classList.contains("hidden")).toBe(false);
+    expect(harness.panel.hidden).toBe(false);
 
     const mediumButton = harness.list.querySelector<HTMLButtonElement>('[data-value="medium"]');
     mediumButton?.click();
 
     expect(harness.onChange).toHaveBeenCalledWith("medium");
-    expect(harness.panel.classList.contains("hidden")).toBe(true);
+    expect(harness.panel.hidden).toBe(true);
 
     harness.trigger.click();
-    expect(harness.panel.classList.contains("hidden")).toBe(false);
+    expect(harness.panel.hidden).toBe(false);
     document.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    expect(harness.panel.classList.contains("hidden")).toBe(true);
+    expect(harness.panel.hidden).toBe(true);
   });
 });
 
@@ -34,7 +35,7 @@ function createHarness(rootId: string) {
   document.body.innerHTML = `
     <div id="${rootId}" class="composer-picker">
       <button id="${rootId}-trigger" type="button"></button>
-      <div id="${rootId}-panel" class="composer-picker-panel hidden">
+      <div id="${rootId}-panel" class="composer-picker-panel" hidden>
         <div id="${rootId}-list" class="composer-picker-list"></div>
       </div>
     </div>
@@ -51,6 +52,7 @@ function createHarness(rootId: string) {
     onChange,
     options: {
       list,
+      optionListView: createPreactRenderPort(list),
       onChange,
       panel,
       root,

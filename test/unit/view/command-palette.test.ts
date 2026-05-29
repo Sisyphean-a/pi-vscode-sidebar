@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SidebarCommandDefinition } from "../../../src/shared/sidebar-commands.ts";
 import { createCommandPalette } from "../../../src/view/webview/features/command/palette.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("command palette", () => {
   it("updates visible items and applies selected command unless exact match", () => {
@@ -12,7 +13,7 @@ describe("command palette", () => {
 
     palette.update("/zz-d");
     expect(palette.isVisible()).toBe(true);
-    expect(harness.list.querySelectorAll(".command-palette-item")).toHaveLength(2);
+    expect(harness.panel.querySelectorAll(".command-palette-item")).toHaveLength(2);
     expect(palette.applySelection("/zz-d")).toBe(false);
     expect(harness.applyCommand).toHaveBeenCalledWith("zz-dyn-a");
 
@@ -33,29 +34,22 @@ describe("command palette", () => {
 
     palette.update("hello");
     expect(palette.isVisible()).toBe(false);
-    expect(harness.list.querySelectorAll(".command-palette-item")).toHaveLength(0);
+    expect(harness.panel.querySelectorAll(".command-palette-item")).toHaveLength(0);
     expect(palette.moveSelection(1)).toBe(false);
   });
 });
 
 function createHarness() {
-  document.body.innerHTML = `
-    <section id="panel" class="hidden">
-      <div id="list"></div>
-    </section>
-  `;
+  document.body.innerHTML = `<section id="panel"></section>`;
   const panel = expectElement<HTMLElement>("panel");
-  const list = expectElement<HTMLElement>("list");
   const applyCommand = vi.fn();
 
   return {
     applyCommand,
-    list,
     options: {
       applyCommand,
-      list,
       locale: "zh" as const,
-      panel,
+      view: createPreactRenderPort(panel),
     },
     panel,
   };

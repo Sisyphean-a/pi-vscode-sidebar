@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { UiPendingImageAttachment } from "../../../src/view/protocol.ts";
 import { createConversationFeed } from "../../../src/view/webview/features/conversation/feed.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("conversation feed", () => {
   beforeEach(() => {
@@ -13,7 +14,7 @@ describe("conversation feed", () => {
     if (!container) throw new Error("Missing feed container.");
 
     const feed = createConversationFeed({
-      container,
+      view: createPreactRenderPort(container),
       onChange() {},
       renderAssistantMarkdown(text) {
         return text;

@@ -1,8 +1,7 @@
-import { signal } from "@preact/signals";
-import { render } from "preact";
-
 import { createPanelLogPresentation, type PanelLogLevelTone } from "./panel-log-presentation.ts";
 import { parsePanelLogMessage, type PanelLogUiMessage } from "./panel-log-message-parsing.ts";
+import { expectDocumentElementById } from "./ui/dom-elements.ts";
+import { createPreactRenderPort } from "./ui/preact-render-port.ts";
 
 interface LogEntry {
   id: string;
@@ -20,29 +19,36 @@ declare function acquireVsCodeApi<T>(): {
 };
 
 const vscode = acquireVsCodeApi<PanelLogUiMessage>();
-const app = expectElement<HTMLDivElement>("log-app");
-const entriesSignal = signal<LogEntry[]>([]);
+const app = expectDocumentElementById<HTMLDivElement>("log-app");
+const appView = createPreactRenderPort(app);
+let entries: LogEntry[] = [];
 
 window.addEventListener("message", (event) => {
   const message = parsePanelLogMessage(event.data);
   if (!message) return;
   if (message.type === "log_reset") {
-    entriesSignal.value = [];
+    entries = [];
+    refreshView();
     return;
   }
   if (message.type === "log_history") {
-    entriesSignal.value = createHistoryEntries(message.lines);
+    entries = createHistoryEntries(message.lines);
+    refreshView();
     return;
   }
-  entriesSignal.value = [toLogEntry(message.line), ...entriesSignal.value];
+  entries = [toLogEntry(message.line), ...entries];
+  refreshView();
 });
 
-render(<PanelLogEntries />, app);
+refreshView();
 vscode.postMessage({ type: "ui_ready" });
 
-function PanelLogEntries() {
-  const entries = entriesSignal.value;
-  if (entries.length === 0) {
+function refreshView(): void {
+  appView.render(<PanelLogEntries entries={entries} />);
+}
+
+function PanelLogEntries(props: { entries: LogEntry[] }) {
+  if (props.entries.length === 0) {
     return (
       <section class="panel-log-shell">
         <PanelLogToolbar hasEntries={false} />
@@ -56,7 +62,7 @@ function PanelLogEntries() {
   return (
     <section class="panel-log-shell">
       <PanelLogToolbar hasEntries />
-      {entries.map((entry) => (
+      {props.entries.map((entry) => (
         <PanelLogEntryCard key={entry.id} entry={entry} />
       ))}
     </section>
@@ -144,12 +150,6 @@ function createHistoryEntries(lines: readonly string[]): LogEntry[] {
 
 function handleClearLogsClick(): void {
   vscode.postMessage({ type: "clear_panel_logs" });
-}
-
-function expectElement<TElement extends HTMLElement>(id: string): TElement {
-  const element = document.getElementById(id);
-  if (!element) throw new Error(`Missing element #${id}`);
-  return element as TElement;
 }
 
 function createEntryId(): string {

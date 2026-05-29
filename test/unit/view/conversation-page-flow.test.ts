@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { createConversationPageFlow } from "../../../src/view/webview/features/conversation/page-flow.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("conversation page flow", () => {
   it("opens file reference when clicking a rendered reference chip", () => {
@@ -26,14 +27,14 @@ describe("conversation page flow", () => {
       },
       conversationFeed: {
         attachImagesToMessage: vi.fn(),
-        ensureInlineActivitySlot: vi.fn(() => document.createElement("section")),
-        findInlineActivitySlot: vi.fn(() => null),
-        moveInlineActivitySlotToEnd: vi.fn(() => document.createElement("section")),
+        findInlineActivitySlotView: vi.fn(() => undefined),
+        moveInlineActivitySlotToEnd: vi.fn(() =>
+          createPreactRenderPort(document.createElement("section")),
+        ),
         reset: vi.fn(),
         setMessageText: vi.fn(),
       },
-      extensionUiPanel: document.createElement("section"),
-      messageFeed,
+      isExtensionUiVisible: () => false,
       onDynamicCommandsChange: vi.fn(),
       onOpenFileReference,
       onStreamingPhaseChange: vi.fn(),
@@ -41,7 +42,9 @@ describe("conversation page flow", () => {
         setVisible: vi.fn(),
         update: vi.fn(),
       },
-      scrollToBottomButton: document.createElement("button"),
+      resetExtensionUi: vi.fn(),
+      setScrollToBottomVisible: vi.fn(),
+      viewport: createConversationViewportHarness(messageFeed),
     });
 
     const clickEvent = { target: chip } as unknown as MouseEvent;
@@ -68,19 +71,21 @@ describe("conversation page flow", () => {
       },
       conversationFeed: {
         attachImagesToMessage: vi.fn(),
-        ensureInlineActivitySlot: vi.fn(() => document.createElement("section")),
-        findInlineActivitySlot: vi.fn(() => null),
-        moveInlineActivitySlotToEnd: vi.fn(() => document.createElement("section")),
+        findInlineActivitySlotView: vi.fn(() => undefined),
+        moveInlineActivitySlotToEnd: vi.fn(() =>
+          createPreactRenderPort(document.createElement("section")),
+        ),
         reset: vi.fn(),
         setMessageText: vi.fn(),
       },
-      extensionUiPanel: document.createElement("section"),
-      messageFeed: document.createElement("section"),
+      isExtensionUiVisible: () => false,
       onDynamicCommandsChange: vi.fn(),
       onOpenFileReference: vi.fn(),
       onStreamingPhaseChange: vi.fn(),
       recentSessionsPanel,
-      scrollToBottomButton: document.createElement("button"),
+      resetExtensionUi: vi.fn(),
+      setScrollToBottomVisible: vi.fn(),
+      viewport: createConversationViewportHarness(document.createElement("section")),
     });
 
     flow.startFreshConversation();
@@ -88,3 +93,17 @@ describe("conversation page flow", () => {
     expect(recentSessionsPanel.setVisible).toHaveBeenLastCalledWith(true);
   });
 });
+
+function createConversationViewportHarness(messageFeed: HTMLElement) {
+  return {
+    getChildElementCount() {
+      return messageFeed.childElementCount;
+    },
+    isNearBottom() {
+      return true;
+    },
+    scrollToBottom() {
+      messageFeed.scrollTop = messageFeed.scrollHeight;
+    },
+  };
+}

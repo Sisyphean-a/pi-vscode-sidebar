@@ -1,6 +1,6 @@
-import { effect, signal } from "@preact/signals";
-import { h, render } from "preact";
+import { h } from "preact";
 import type { RecentSessionSummary } from "../../../../shared/recent-sessions.ts";
+import type { PreactRenderPort } from "../../ui/preact-render-port.ts";
 import {
   formatRecentSessionTime,
   closeRecentSessionsDialog,
@@ -19,14 +19,9 @@ export interface RecentSessionsPanel {
 }
 
 interface CreateRecentSessionsPanelOptions {
-  section: HTMLElement;
-  preview: HTMLElement;
-  moreButton: HTMLButtonElement;
-  overlay: HTMLElement;
-  dialogTitle: HTMLElement;
-  dialogList: HTMLElement;
-  closeButton: HTMLButtonElement;
   onSelect(sessionPath: string): void;
+  overlayView: PreactRenderPort;
+  sectionView: PreactRenderPort;
 }
 
 interface RecentSessionsViewState {
@@ -38,51 +33,40 @@ export function createRecentSessionsPanel(
   options: CreateRecentSessionsPanelOptions,
 ): RecentSessionsPanel {
   const state = createRecentSessionsPanelState();
-  const viewStateSignal = signal(buildRecentSessionsViewState(state));
-
-  effect(() => {
-    const viewState = viewStateSignal.value;
-    renderRecentSessionsDom(
-      {
-        activeSessionPath: viewState.activeSessionPath,
-        dialogList: options.dialogList,
-        dialogTitle: options.dialogTitle,
-        moreButton: options.moreButton,
-        onSelectSession(sessionPath) {
-          const selection = selectRecentSession(state, sessionPath);
-          refreshViewState();
-          if (!selection.shouldSelect) return;
-          options.onSelect(sessionPath);
-        },
-        overlay: options.overlay,
-        preview: options.preview,
-        section: options.section,
-      },
-      viewState.renderState,
-    );
-  });
-
+  let viewState = buildRecentSessionsViewState(state);
+  let renderedViewState: RecentSessionsViewState | undefined;
   const closeDialog = () => {
     closeRecentSessionsDialog(state);
     refreshViewState();
   };
-
   const openDialog = () => {
     if (!openRecentSessionsDialog(state)) return;
     refreshViewState();
   };
-
-  options.moreButton.addEventListener("click", () => {
-    openDialog();
-  });
-  options.closeButton.addEventListener("click", () => {
-    closeDialog();
-  });
-  options.overlay.addEventListener("click", (event) => {
-    if (event.target === options.overlay) {
-      closeDialog();
-    }
-  });
+  const selectSession = (sessionPath: string) => {
+    const selection = selectRecentSession(state, sessionPath);
+    refreshViewState();
+    if (!selection.shouldSelect) return;
+    options.onSelect(sessionPath);
+  };
+  const renderView = () => {
+    options.sectionView.render(
+      h(RecentSessionsSection, {
+        activeSessionPath: viewState.activeSessionPath,
+        onOpenDialog: openDialog,
+        onSelectSession: selectSession,
+        renderState: viewState.renderState,
+      }),
+    );
+    options.overlayView.render(
+      h(RecentSessionsOverlay, {
+        activeSessionPath: viewState.activeSessionPath,
+        onCloseDialog: closeDialog,
+        onSelectSession: selectSession,
+        renderState: viewState.renderState,
+      }),
+    );
+  };
 
   refreshViewState();
 
@@ -98,8 +82,107 @@ export function createRecentSessionsPanel(
   };
 
   function refreshViewState(): void {
-    viewStateSignal.value = buildRecentSessionsViewState(state);
+    const nextViewState = buildRecentSessionsViewState(state);
+    if (isRecentSessionsViewStateEqual(renderedViewState, nextViewState)) return;
+    viewState = nextViewState;
+    renderedViewState = nextViewState;
+    renderView();
   }
+}
+
+interface RecentSessionsSectionProps {
+  activeSessionPath: string | undefined;
+  onOpenDialog(): void;
+  onSelectSession(sessionPath: string): void;
+  renderState: RecentSessionsRenderState;
+}
+
+function RecentSessionsSection(props: RecentSessionsSectionProps) {
+  if (props.renderState.sectionHidden) return null;
+
+  return h(
+    "section",
+    {
+      class: "recent-sessions recent-sessions-stream",
+      "aria-label": "最近任务",
+    },
+    h(
+      "div",
+      { class: "recent-sessions-preview" },
+      h(RecentSessionButtonList, {
+        activeSessionPath: props.activeSessionPath,
+        onSelectSession: props.onSelectSession,
+        sessions: props.renderState.previewSessions,
+      }),
+    ),
+    props.renderState.showMoreButton
+      ? h(
+          "button",
+          {
+            class: "recent-sessions-more recent-sessions-link",
+            onClick: props.onOpenDialog,
+            type: "button",
+          },
+          props.renderState.moreButtonText,
+        )
+      : null,
+  );
+}
+
+interface RecentSessionsOverlayProps {
+  activeSessionPath: string | undefined;
+  onCloseDialog(): void;
+  onSelectSession(sessionPath: string): void;
+  renderState: RecentSessionsRenderState;
+}
+
+function RecentSessionsOverlay(props: RecentSessionsOverlayProps) {
+  if (!props.renderState.dialogOpen) return null;
+
+  return h(
+    "div",
+    {
+      class: "recent-sessions-overlay",
+      onClick(event) {
+        if (event.target === event.currentTarget) {
+          props.onCloseDialog();
+        }
+      },
+    },
+    h(
+      "section",
+      {
+        class: "recent-sessions-dialog",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-labelledby": "recent-sessions-dialog-title",
+      },
+      h(
+        "div",
+        { class: "recent-sessions-dialog-header" },
+        h("h2", { id: "recent-sessions-dialog-title" }, props.renderState.dialogTitleText),
+        h(
+          "button",
+          {
+            class: "icon-action",
+            onClick: props.onCloseDialog,
+            title: "关闭",
+            type: "button",
+          },
+          "关闭",
+        ),
+      ),
+      h(
+        "div",
+        { class: "recent-sessions-dialog-list" },
+        h(RecentSessionButtonList, {
+          activeSessionPath: props.activeSessionPath,
+          onSelectSession: props.onSelectSession,
+          sessions: props.renderState.allSessions,
+        }),
+      ),
+    ),
+  );
 }
 
 function buildRecentSessionsViewState(
@@ -111,44 +194,50 @@ function buildRecentSessionsViewState(
   };
 }
 
-interface RecentSessionsDomOptions {
-  activeSessionPath?: string;
-  dialogList: HTMLElement;
-  dialogTitle: HTMLElement;
-  moreButton: HTMLButtonElement;
-  onSelectSession(sessionPath: string): void;
-  overlay: HTMLElement;
-  preview: HTMLElement;
-  section: HTMLElement;
+function isRecentSessionsViewStateEqual(
+  left: RecentSessionsViewState | undefined,
+  right: RecentSessionsViewState,
+): boolean {
+  if (!left) return false;
+  return (
+    left.activeSessionPath === right.activeSessionPath &&
+    isRecentSessionsRenderStateEqual(left.renderState, right.renderState)
+  );
 }
 
-function renderRecentSessionsDom(
-  options: RecentSessionsDomOptions,
-  renderState: RecentSessionsRenderState,
-): void {
-  options.section.classList.toggle("hidden", renderState.sectionHidden);
-  options.overlay.classList.toggle("hidden", !renderState.dialogOpen);
-  options.dialogTitle.textContent = renderState.dialogTitleText;
-  options.moreButton.textContent = renderState.moreButtonText;
-  options.moreButton.classList.toggle("hidden", !renderState.showMoreButton);
-
-  render(
-    h(RecentSessionButtonList, {
-      activeSessionPath: options.activeSessionPath,
-      onSelectSession: options.onSelectSession,
-      sessions: renderState.previewSessions,
-    }),
-    options.preview,
+function isRecentSessionsRenderStateEqual(
+  left: RecentSessionsRenderState,
+  right: RecentSessionsRenderState,
+): boolean {
+  return (
+    left.sectionHidden === right.sectionHidden &&
+    left.dialogOpen === right.dialogOpen &&
+    left.showMoreButton === right.showMoreButton &&
+    left.moreButtonText === right.moreButtonText &&
+    left.dialogTitleText === right.dialogTitleText &&
+    isSessionListEqual(left.previewSessions, right.previewSessions) &&
+    isSessionListEqual(left.allSessions, right.allSessions)
   );
+}
 
-  render(
-    h(RecentSessionButtonList, {
-      activeSessionPath: options.activeSessionPath,
-      onSelectSession: options.onSelectSession,
-      sessions: renderState.allSessions,
-    }),
-    options.dialogList,
-  );
+function isSessionListEqual(
+  left: readonly RecentSessionSummary[],
+  right: readonly RecentSessionSummary[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const leftSession = left[index];
+    const rightSession = right[index];
+    if (!leftSession || !rightSession) return false;
+    if (
+      leftSession.sessionPath !== rightSession.sessionPath ||
+      leftSession.updatedAt !== rightSession.updatedAt ||
+      leftSession.title !== rightSession.title
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 interface RecentSessionButtonListProps {

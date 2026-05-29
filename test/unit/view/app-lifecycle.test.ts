@@ -62,13 +62,17 @@ function createHarness() {
         beginConversationReplay,
         startFreshConversation,
       },
-      imageAttachmentController: {
-        clear: imageClear,
+      resetComposer() {
+        promptInput.value = "";
+        imageClear();
+        resetComposerHeight();
       },
-      newSessionButton,
-      promptInput,
-      resetComposerHeight,
-      sendButton,
+      syncStreamingChrome(isStreamingPhase: boolean) {
+        newSessionButton.disabled = isStreamingPhase;
+        sendButton.dataset.mode = isStreamingPhase ? "stop" : "send";
+        sendButton.title = isStreamingPhase ? "停止生成" : "发送消息";
+        sendButton.setAttribute("aria-label", sendButton.title);
+      },
     },
     promptInput,
     resetComposerHeight,

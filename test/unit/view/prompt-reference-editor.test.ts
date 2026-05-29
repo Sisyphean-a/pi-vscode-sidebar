@@ -8,27 +8,56 @@ describe("prompt reference editor", () => {
     promptInput.value = "hello world";
     promptInput.selectionStart = 5;
     promptInput.selectionEnd = 5;
-    const syncComposerHeight = vi.fn();
-    const editor = createPromptReferenceEditor({ promptInput, syncComposerHeight });
+    const syncHeight = vi.fn();
+    const editor = createPromptReferenceEditor({
+      promptInput: createPromptReferenceInput(promptInput, syncHeight),
+    });
 
     editor.insert({ reference: "#file:src/app.ts:12" });
 
     expect(promptInput.value).toBe("hello #file:src/app.ts:12 world");
     expect(promptInput.selectionStart).toBe(promptInput.value.length - " world".length);
     expect(promptInput.selectionEnd).toBe(promptInput.selectionStart);
-    expect(syncComposerHeight).toHaveBeenCalledOnce();
+    expect(syncHeight).toHaveBeenCalledOnce();
   });
 
   it("ignores invalid payloads", () => {
     const promptInput = document.createElement("textarea");
     promptInput.value = "hello";
-    const syncComposerHeight = vi.fn();
-    const editor = createPromptReferenceEditor({ promptInput, syncComposerHeight });
+    const syncHeight = vi.fn();
+    const editor = createPromptReferenceEditor({
+      promptInput: createPromptReferenceInput(promptInput, syncHeight),
+    });
 
     editor.insert({ ref: "missing-reference-field" });
     editor.insert({ reference: 1 });
 
     expect(promptInput.value).toBe("hello");
-    expect(syncComposerHeight).not.toHaveBeenCalled();
+    expect(syncHeight).not.toHaveBeenCalled();
   });
 });
+
+function createPromptReferenceInput(promptInput: HTMLTextAreaElement, syncHeight: () => void) {
+  return {
+    focus() {
+      promptInput.focus();
+    },
+    getSelectionEnd() {
+      return promptInput.selectionEnd;
+    },
+    getSelectionStart() {
+      return promptInput.selectionStart;
+    },
+    getValue() {
+      return promptInput.value;
+    },
+    setSelection(start: number, end: number) {
+      promptInput.selectionStart = start;
+      promptInput.selectionEnd = end;
+    },
+    setValue(value: string) {
+      promptInput.value = value;
+    },
+    syncHeight,
+  };
+}

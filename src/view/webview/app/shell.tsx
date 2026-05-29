@@ -1,71 +1,167 @@
-import { render } from "preact";
+import { createRef, type RefObject } from "preact";
+import { createPreactRenderPort } from "../ui/preact-render-port.ts";
 
-export interface AppDom {
+interface ComposerPickerDom {
+  list: HTMLElement;
+  panel: HTMLElement;
+  root: HTMLElement;
+  trigger: HTMLButtonElement;
+}
+
+interface HeaderDom {
+  newSessionButton: HTMLButtonElement;
+  recentSessionsOverlay: HTMLElement;
+  recentSessionsSection: HTMLElement;
+}
+
+interface ConversationDom {
   activityFeed: HTMLElement;
-  commandPaletteList: HTMLElement;
+  extensionUiPanel: HTMLElement;
+  messageFeed: HTMLElement;
+  scrollToBottomButton: HTMLButtonElement;
+}
+
+interface ComposerDom {
   commandPalettePanel: HTMLElement;
   commandResult: HTMLElement;
-  commandUiList: HTMLElement;
   commandUiPanel: HTMLElement;
-  extensionUiPanel: HTMLElement;
   imageAttachmentButton: HTMLButtonElement;
   imageAttachmentList: HTMLElement;
-  messageFeed: HTMLElement;
-  newSessionButton: HTMLButtonElement;
+  modelPicker: ComposerPickerDom;
   promptInput: HTMLTextAreaElement;
-  recentSessionsDialogClose: HTMLButtonElement;
-  recentSessionsDialogList: HTMLElement;
-  recentSessionsDialogTitle: HTMLElement;
-  recentSessionsMoreButton: HTMLButtonElement;
-  recentSessionsOverlay: HTMLElement;
-  recentSessionsPreview: HTMLElement;
-  recentSessionsSection: HTMLElement;
-  root: HTMLElement;
-  scrollToBottomButton: HTMLButtonElement;
   sendButton: HTMLButtonElement;
+  thinkingLevelPicker: ComposerPickerDom;
+}
+
+interface AppDom {
+  composer: ComposerDom;
+  conversation: ConversationDom;
+  header: HeaderDom;
+  root: HTMLElement;
 }
 
 export function createAppDom(root: HTMLElement): AppDom {
-  render(<SidebarAppShell />, root);
+  const refs = createSidebarAppShellRefs();
+  createPreactRenderPort(root).render(<SidebarAppShell refs={refs} />);
 
   return {
-    activityFeed: expectAppElement(root, "activity-feed"),
-    commandPaletteList: expectAppElement(root, "command-palette-list"),
-    commandPalettePanel: expectAppElement(root, "command-palette-panel"),
-    commandResult: expectAppElement(root, "command-result"),
-    commandUiList: expectAppElement(root, "command-ui-list"),
-    commandUiPanel: expectAppElement(root, "command-ui-panel"),
-    extensionUiPanel: expectAppElement(root, "extension-ui-panel"),
-    imageAttachmentButton: expectAppElement(root, "image-attachment-button"),
-    imageAttachmentList: expectAppElement(root, "image-attachment-list"),
-    messageFeed: expectAppElement(root, "message-feed"),
-    newSessionButton: expectAppElement(root, "new-session-button"),
-    promptInput: expectAppElement(root, "prompt-input"),
-    recentSessionsDialogClose: expectAppElement(root, "recent-sessions-dialog-close"),
-    recentSessionsDialogList: expectAppElement(root, "recent-sessions-dialog-list"),
-    recentSessionsDialogTitle: expectAppElement(root, "recent-sessions-dialog-title"),
-    recentSessionsMoreButton: expectAppElement(root, "recent-sessions-more-button"),
-    recentSessionsOverlay: expectAppElement(root, "recent-sessions-overlay"),
-    recentSessionsPreview: expectAppElement(root, "recent-sessions-preview"),
-    recentSessionsSection: expectAppElement(root, "recent-sessions-section"),
+    composer: {
+      commandPalettePanel: expectElementRef(refs.commandPalettePanel, "command-palette-panel"),
+      commandResult: expectElementRef(refs.commandResult, "command-result"),
+      commandUiPanel: expectElementRef(refs.commandUiPanel, "command-ui-panel"),
+      imageAttachmentButton: expectButtonRef(refs.imageAttachmentButton, "image-attachment-button"),
+      imageAttachmentList: expectElementRef(refs.imageAttachmentList, "image-attachment-list"),
+      modelPicker: {
+        list: expectElementRef(refs.modelPickerList, "model-picker-list"),
+        panel: expectElementRef(refs.modelPickerPanel, "model-picker-panel"),
+        root: expectElementRef(refs.modelPickerRoot, "model-picker"),
+        trigger: expectButtonRef(refs.modelPickerTrigger, "model-picker-trigger"),
+      },
+      promptInput: expectTextareaRef(refs.promptInput, "prompt-input"),
+      sendButton: expectButtonRef(refs.sendButton, "send-button"),
+      thinkingLevelPicker: {
+        list: expectElementRef(refs.thinkingLevelPickerList, "thinking-level-picker-list"),
+        panel: expectElementRef(refs.thinkingLevelPickerPanel, "thinking-level-picker-panel"),
+        root: expectElementRef(refs.thinkingLevelPickerRoot, "thinking-level-picker"),
+        trigger: expectButtonRef(refs.thinkingLevelPickerTrigger, "thinking-level-picker-trigger"),
+      },
+    },
+    conversation: {
+      activityFeed: expectElementRef(refs.activityFeed, "activity-feed"),
+      extensionUiPanel: expectElementRef(refs.extensionUiPanel, "extension-ui-panel"),
+      messageFeed: expectElementRef(refs.messageFeed, "message-feed"),
+      scrollToBottomButton: expectButtonRef(refs.scrollToBottomButton, "scroll-to-bottom-button"),
+    },
+    header: {
+      newSessionButton: expectButtonRef(refs.newSessionButton, "new-session-button"),
+      recentSessionsOverlay: expectElementRef(refs.recentSessionsOverlay, "recent-sessions-overlay"),
+      recentSessionsSection: expectElementRef(refs.recentSessionsSection, "recent-sessions-section"),
+    },
     root,
-    scrollToBottomButton: expectAppElement(root, "scroll-to-bottom-button"),
-    sendButton: expectAppElement(root, "send-button"),
   };
 }
 
-export function expectAppElement<TElement extends HTMLElement>(
-  root: ParentNode,
-  id: string,
-): TElement {
-  const element = root.querySelector(`#${id}`);
-  if (!(element instanceof HTMLElement)) {
-    throw new Error(`Missing element: ${id}`);
-  }
-  return element as TElement;
+interface SidebarAppShellRefs {
+  activityFeed: RefObject<HTMLDivElement>;
+  commandPalettePanel: RefObject<HTMLDivElement>;
+  commandResult: RefObject<HTMLDivElement>;
+  commandUiPanel: RefObject<HTMLDivElement>;
+  extensionUiPanel: RefObject<HTMLElement>;
+  imageAttachmentButton: RefObject<HTMLButtonElement>;
+  imageAttachmentList: RefObject<HTMLDivElement>;
+  messageFeed: RefObject<HTMLDivElement>;
+  modelPickerList: RefObject<HTMLDivElement>;
+  modelPickerPanel: RefObject<HTMLDivElement>;
+  modelPickerRoot: RefObject<HTMLDivElement>;
+  modelPickerTrigger: RefObject<HTMLButtonElement>;
+  newSessionButton: RefObject<HTMLButtonElement>;
+  promptInput: RefObject<HTMLTextAreaElement>;
+  recentSessionsOverlay: RefObject<HTMLDivElement>;
+  recentSessionsSection: RefObject<HTMLElement>;
+  scrollToBottomButton: RefObject<HTMLButtonElement>;
+  sendButton: RefObject<HTMLButtonElement>;
+  thinkingLevelPickerList: RefObject<HTMLDivElement>;
+  thinkingLevelPickerPanel: RefObject<HTMLDivElement>;
+  thinkingLevelPickerRoot: RefObject<HTMLDivElement>;
+  thinkingLevelPickerTrigger: RefObject<HTMLButtonElement>;
 }
 
-export function SidebarAppShell() {
+function createSidebarAppShellRefs(): SidebarAppShellRefs {
+  return {
+    activityFeed: createRef<HTMLDivElement>(),
+    commandPalettePanel: createRef<HTMLDivElement>(),
+    commandResult: createRef<HTMLDivElement>(),
+    commandUiPanel: createRef<HTMLDivElement>(),
+    extensionUiPanel: createRef<HTMLElement>(),
+    imageAttachmentButton: createRef<HTMLButtonElement>(),
+    imageAttachmentList: createRef<HTMLDivElement>(),
+    messageFeed: createRef<HTMLDivElement>(),
+    modelPickerList: createRef<HTMLDivElement>(),
+    modelPickerPanel: createRef<HTMLDivElement>(),
+    modelPickerRoot: createRef<HTMLDivElement>(),
+    modelPickerTrigger: createRef<HTMLButtonElement>(),
+    newSessionButton: createRef<HTMLButtonElement>(),
+    promptInput: createRef<HTMLTextAreaElement>(),
+    recentSessionsOverlay: createRef<HTMLDivElement>(),
+    recentSessionsSection: createRef<HTMLElement>(),
+    scrollToBottomButton: createRef<HTMLButtonElement>(),
+    sendButton: createRef<HTMLButtonElement>(),
+    thinkingLevelPickerList: createRef<HTMLDivElement>(),
+    thinkingLevelPickerPanel: createRef<HTMLDivElement>(),
+    thinkingLevelPickerRoot: createRef<HTMLDivElement>(),
+    thinkingLevelPickerTrigger: createRef<HTMLButtonElement>(),
+  };
+}
+
+function expectElementRef<TElement extends HTMLElement>(
+  ref: RefObject<TElement>,
+  id: string,
+): TElement {
+  if (!(ref.current instanceof HTMLElement)) {
+    throw new Error(`Missing element: ${id}`);
+  }
+  return ref.current as TElement;
+}
+
+function expectButtonRef(ref: RefObject<HTMLButtonElement>, id: string): HTMLButtonElement {
+  if (!(ref.current instanceof HTMLButtonElement)) {
+    throw new Error(`Missing button element: ${id}`);
+  }
+  return ref.current;
+}
+
+function expectTextareaRef(ref: RefObject<HTMLTextAreaElement>, id: string): HTMLTextAreaElement {
+  if (!(ref.current instanceof HTMLTextAreaElement)) {
+    throw new Error(`Missing textarea element: ${id}`);
+  }
+  return ref.current;
+}
+
+interface SidebarAppShellProps {
+  refs: SidebarAppShellRefs;
+}
+
+export function SidebarAppShell(props: SidebarAppShellProps) {
   return (
     <main class="app-shell">
       <header class="topbar">
@@ -73,6 +169,7 @@ export function SidebarAppShell() {
           <div class="topbar-actions">
             <button
               id="new-session-button"
+              ref={props.refs.newSessionButton}
               type="button"
               class="icon-action topbar-icon-button"
               title="新建会话"
@@ -97,48 +194,47 @@ export function SidebarAppShell() {
         </div>
         <section
           id="recent-sessions-section"
-          class="recent-sessions recent-sessions-stream hidden"
+          ref={props.refs.recentSessionsSection}
           aria-label="最近任务"
-        >
-          <div id="recent-sessions-preview" class="recent-sessions-preview"></div>
-          <button
-            id="recent-sessions-more-button"
-            type="button"
-            class="recent-sessions-more recent-sessions-link hidden"
-          >
-            查看全部
-          </button>
-        </section>
+        ></section>
       </header>
 
       <section class="conversation">
-        <div id="activity-feed" class="activity-feed"></div>
-        <div id="message-feed" class="message-feed"></div>
+        <div id="activity-feed" ref={props.refs.activityFeed} class="activity-feed"></div>
+        <div id="message-feed" ref={props.refs.messageFeed} class="message-feed"></div>
         <button
           id="scroll-to-bottom-button"
+          ref={props.refs.scrollToBottomButton}
           type="button"
-          class="scroll-to-bottom hidden"
+          class="scroll-to-bottom"
+          hidden
           title="回到底部"
         >
           回到底部
         </button>
-        <section id="extension-ui-panel" class="message-card extension-panel hidden"></section>
+        <section
+          id="extension-ui-panel"
+          ref={props.refs.extensionUiPanel}
+          class="message-card extension-panel"
+          hidden
+        ></section>
       </section>
 
       <footer class="composer">
-        <div id="command-palette-panel" class="command-palette-panel hidden">
-          <div id="command-palette-list" class="command-palette-list"></div>
-        </div>
-        <div id="command-ui-panel" class="command-ui-panel hidden">
-          <div id="command-ui-list" class="command-ui-list"></div>
-        </div>
-        <div id="image-attachment-list" class="image-attachment-list hidden"></div>
-        <textarea id="prompt-input" rows={1} placeholder="继续提问"></textarea>
-        <div id="command-result" class="command-result hidden"></div>
+        <div id="command-palette-panel" ref={props.refs.commandPalettePanel}></div>
+        <div id="command-ui-panel" ref={props.refs.commandUiPanel}></div>
+        <div
+          id="image-attachment-list"
+          ref={props.refs.imageAttachmentList}
+          class="image-attachment-list"
+        ></div>
+        <textarea id="prompt-input" ref={props.refs.promptInput} rows={1} placeholder="继续提问"></textarea>
+        <div id="command-result" ref={props.refs.commandResult} class="command-result" hidden></div>
         <div class="composer-toolbar">
           <div id="composer-meta" class="composer-meta">
             <button
               id="image-attachment-button"
+              ref={props.refs.imageAttachmentButton}
               type="button"
               class="icon-action composer-icon-button"
               title="添加图片"
@@ -161,9 +257,10 @@ export function SidebarAppShell() {
                 <path d="M21 15l-4.5-4.5L7 20"></path>
               </svg>
             </button>
-            <div id="model-picker" class="composer-picker">
+            <div id="model-picker" ref={props.refs.modelPickerRoot} class="composer-picker">
               <button
                 id="model-picker-trigger"
+                ref={props.refs.modelPickerTrigger}
                 type="button"
                 class="composer-picker-trigger"
                 title="切换模型"
@@ -174,18 +271,29 @@ export function SidebarAppShell() {
               >
                 加载中
               </button>
-              <div id="model-picker-panel" class="composer-picker-panel hidden">
+              <div
+                id="model-picker-panel"
+                ref={props.refs.modelPickerPanel}
+                class="composer-picker-panel"
+                hidden
+              >
                 <div
                   id="model-picker-list"
+                  ref={props.refs.modelPickerList}
                   class="composer-picker-list"
                   role="listbox"
                   aria-label="模型列表"
                 ></div>
               </div>
             </div>
-            <div id="thinking-level-picker" class="composer-picker">
+            <div
+              id="thinking-level-picker"
+              ref={props.refs.thinkingLevelPickerRoot}
+              class="composer-picker"
+            >
               <button
                 id="thinking-level-picker-trigger"
+                ref={props.refs.thinkingLevelPickerTrigger}
                 type="button"
                 class="composer-picker-trigger"
                 title="切换思考等级"
@@ -195,9 +303,15 @@ export function SidebarAppShell() {
               >
                 中
               </button>
-              <div id="thinking-level-picker-panel" class="composer-picker-panel hidden">
+              <div
+                id="thinking-level-picker-panel"
+                ref={props.refs.thinkingLevelPickerPanel}
+                class="composer-picker-panel"
+                hidden
+              >
                 <div
                   id="thinking-level-picker-list"
+                  ref={props.refs.thinkingLevelPickerList}
                   class="composer-picker-list"
                   role="listbox"
                   aria-label="思考等级列表"
@@ -208,38 +322,44 @@ export function SidebarAppShell() {
           <div class="toolbar-right">
             <button
               id="send-button"
+              ref={props.refs.sendButton}
               type="button"
               class="send-action"
               title="发送消息"
               aria-label="发送消息"
               data-mode="send"
-            ></button>
+            >
+              <svg
+                class="send-action-icon send-action-icon-send"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+              <svg
+                class="send-action-icon send-action-icon-stop"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+              </svg>
+            </button>
           </div>
         </div>
       </footer>
 
-      <div id="recent-sessions-overlay" class="recent-sessions-overlay hidden">
-        <section
-          id="recent-sessions-dialog"
-          class="recent-sessions-dialog"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="recent-sessions-dialog-title"
-        >
-          <div class="recent-sessions-dialog-header">
-            <h2 id="recent-sessions-dialog-title">全部任务</h2>
-            <button
-              id="recent-sessions-dialog-close"
-              type="button"
-              class="icon-action"
-              title="关闭"
-            >
-              关闭
-            </button>
-          </div>
-          <div id="recent-sessions-dialog-list" class="recent-sessions-dialog-list"></div>
-        </section>
-      </div>
+      <div id="recent-sessions-overlay" ref={props.refs.recentSessionsOverlay}></div>
     </main>
   );
 }

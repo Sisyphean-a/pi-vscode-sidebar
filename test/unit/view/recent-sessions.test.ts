@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { RecentSessionSummary } from "../../../src/shared/recent-sessions.ts";
 import { createRecentSessionsPanel } from "../../../src/view/webview/features/recent-sessions/panel.ts";
+import { createPreactRenderPort } from "../../../src/view/webview/ui/preact-render-port.ts";
 
 describe("recent sessions panel", () => {
   it("supports open/close/select flow while keeping active session behavior", () => {
@@ -10,59 +11,52 @@ describe("recent sessions panel", () => {
     const panel = createRecentSessionsPanel(harness.options);
 
     panel.update(createSessions(), "C:\\sessions\\session-2.jsonl");
-    expect(harness.preview.querySelectorAll(".recent-session-item")).toHaveLength(3);
-    expect(harness.dialogList.querySelectorAll(".recent-session-item")).toHaveLength(4);
+    expect(harness.sectionRoot.querySelectorAll(".recent-session-item")).toHaveLength(3);
 
-    harness.moreButton.click();
-    expect(harness.overlay.classList.contains("hidden")).toBe(false);
+    harness.expectElement<HTMLButtonElement>(".recent-sessions-more", harness.sectionRoot).click();
+    expect(harness.overlayRoot.querySelector(".recent-sessions-overlay")).not.toBeNull();
 
-    const dialogButtons =
-      harness.dialogList.querySelectorAll<HTMLButtonElement>(".recent-session-item");
+    const dialogButtons = harness.overlayRoot.querySelectorAll<HTMLButtonElement>(
+      ".recent-session-item",
+    );
+    expect(dialogButtons).toHaveLength(4);
     dialogButtons[1]?.click();
     expect(harness.onSelect).not.toHaveBeenCalled();
-    expect(harness.overlay.classList.contains("hidden")).toBe(true);
+    expect(harness.overlayRoot.querySelector(".recent-sessions-overlay")).toBeNull();
 
-    harness.moreButton.click();
-    const reopenedDialogButtons =
-      harness.dialogList.querySelectorAll<HTMLButtonElement>(".recent-session-item");
+    harness.expectElement<HTMLButtonElement>(".recent-sessions-more", harness.sectionRoot).click();
+    const reopenedDialogButtons = harness.overlayRoot.querySelectorAll<HTMLButtonElement>(
+      ".recent-session-item",
+    );
     reopenedDialogButtons[2]?.click();
     expect(harness.onSelect).toHaveBeenCalledWith("C:\\sessions\\session-3.jsonl");
-    expect(harness.overlay.classList.contains("hidden")).toBe(true);
+    expect(harness.overlayRoot.querySelector(".recent-sessions-overlay")).toBeNull();
 
     panel.setVisible(false);
-    expect(harness.section.classList.contains("hidden")).toBe(true);
-    expect(harness.overlay.classList.contains("hidden")).toBe(true);
+    expect(harness.sectionRoot.innerHTML).toBe("");
+    expect(harness.overlayRoot.innerHTML).toBe("");
   });
 });
 
 function createHarness() {
-  const section = document.createElement("section");
-  const preview = document.createElement("div");
-  const moreButton = document.createElement("button");
-  const overlay = document.createElement("div");
-  const dialogTitle = document.createElement("h2");
-  const dialogList = document.createElement("div");
-  const closeButton = document.createElement("button");
+  const sectionRoot = document.createElement("div");
+  const overlayRoot = document.createElement("div");
   const onSelect = vi.fn();
 
   return {
-    dialogTitle,
-    dialogList,
-    moreButton,
     onSelect,
     options: {
-      closeButton,
-      dialogList,
-      dialogTitle,
-      moreButton,
       onSelect,
-      overlay,
-      preview,
-      section,
+      overlayView: createPreactRenderPort(overlayRoot),
+      sectionView: createPreactRenderPort(sectionRoot),
     },
-    overlay,
-    preview,
-    section,
+    overlayRoot,
+    sectionRoot,
+    expectElement<TElement extends Element>(selector: string, root: ParentNode): TElement {
+      const element = root.querySelector(selector);
+      if (!element) throw new Error(`Missing element: ${selector}`);
+      return element as TElement;
+    },
   };
 }
 
